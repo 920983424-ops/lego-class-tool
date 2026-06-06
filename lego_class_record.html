@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>🤖 课堂表现记录表</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei","PingFang SC",sans-serif;
+    background: #f0f4f8; padding: 20px; color: #1a1a2e;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+
+  /* ====== 标签栏 ====== */
+  .tabs {
+    display: flex; gap: 0; margin-bottom: 12px; overflow-x: auto;
+    padding: 0 4px; flex-wrap: nowrap;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 10px 10px 0 0;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    background: #e8ecf0; color: #666; white-space: nowrap;
+    border: none; transition: all 0.15s;
+    margin-right: 3px; flex-shrink: 0;
+  }
+  .tab:hover { background: #dce0e6; }
+  .tab.active { background: #fff; color: #1a1a2e; box-shadow: 0 -2px 6px rgba(0,0,0,0.06); }
+  .tab .close {
+    font-size: 14px; color: #999; padding: 0 2px; cursor: pointer;
+    border-radius: 4px; line-height: 1;
+  }
+  .tab .close:hover { color: #ff3b30; background: #fee; }
+  .tab-add {
+    display: flex; align-items: center; gap: 4px;
+    padding: 8px 14px; border-radius: 10px 10px 0 0;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    background: transparent; color: #4f8cff; white-space: nowrap;
+    border: 2px dashed #ccc; border-bottom: none;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .tab-add:hover { background: #eef3ff; border-color: #4f8cff; }
+
+  /* ====== 表头 ====== */
+  .header {
+    background: #fff; border-radius: 0 12px 12px 12px; padding: 14px 18px; margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  }
+  .header label { display: flex; align-items: center; gap: 4px; font-size: 14px; color: #444; }
+  .header input, .header select {
+    padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+  }
+
+  .toolbar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 6px 14px; border: none; border-radius: 8px; font-size: 13px; cursor: pointer;
+    font-weight: 600; transition: all 0.15s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+  .btn-primary { background: #4f8cff; color: #fff; }
+  .btn-success { background: #34c759; color: #fff; }
+  .btn-danger { background: #ff3b30; color: #fff; }
+  .btn-outline { background: #fff; color: #555; border: 1px solid #ccc; }
+  .save-indicator { font-size: 12px; margin-left: auto; padding: 3px 10px; border-radius: 10px; white-space: nowrap; }
+  .save-indicator.ok { color: #34c759; background: #e8f5e9; }
+  .save-indicator.warn { color: #ff9f0a; background: #fff8e1; }
+
+  /* ====== 学生卡片 ====== */
+  .card {
+    background: #fff; border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #ddd;
+  }
+  .card.good { border-left-color: #34c759; background: #f0fdf4; }
+  .card.mid { border-left-color: #ff9f0a; background: #fffbea; }
+  .card.issue { border-left-color: #ff3b30; background: #fff5f5; }
+
+  .card-top {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  }
+  .card-top .name {
+    font-size: 16px; font-weight: 700; min-width: 50px; cursor: pointer;
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .card-top .name:hover { background: #eee; }
+  .card-top .del { margin-left: auto; background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer; }
+  .card-top .del:hover { color: #ff3b30; }
+
+  .sec-title { font-size: 12px; font-weight: 700; color: #999; margin: 6px 0 4px; letter-spacing: 0.3px; }
+
+  .chk-group { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chk-group label {
+    display: flex; align-items: center; gap: 3px; font-size: 13px;
+    background: #f5f6f8; padding: 3px 9px 3px 7px; border-radius: 6px;
+    cursor: pointer; user-select: none; border: 1px solid transparent;
+  }
+  .chk-group label:has(input:checked) { background: #eef3ff; border-color: #4f8cff; }
+
+  .star-btn {
+    font-size: 22px; background: none; border: none; padding: 1px 2px;
+    cursor: pointer; color: #ddd; line-height: 1;
+  }
+  .star-btn:hover { color: #ffb84d; }
+  .star-btn.on { color: #ff9f0a; }
+
+  .star-row { display: flex; align-items: center; gap: 2px; margin-right: 14px; }
+  .star-row .label { font-size: 13px; color: #888; min-width: 30px; }
+
+  .tag-btn {
+    display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px;
+    font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; opacity: 0.4;
+  }
+  .tag-btn.on { opacity: 1; box-shadow: 0 0 0 2px currentColor; }
+  .tag-btn:hover { transform: scale(1.05); opacity: 0.8; }
+  .tg-green { background: #d1fae5; color: #065f46; }
+  .tg-yellow { background: #fef3c7; color: #92400e; }
+  .tg-red { background: #fee2e2; color: #991b1b; }
+  .tg-blue { background: #dbeafe; color: #1e40af; }
+
+  textarea {
+    width: 100%; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px;
+    resize: vertical; min-height: 40px; font-size: 13px; font-family: inherit;
+    margin-top: 6px; background: #fafbfc;
+  }
+  textarea:focus { outline: 2px solid #4f8cff; border-color: #4f8cff; }
+
+  .file-input-wrap { display: none; }
+  .empty-tip { text-align: center; padding: 60px 20px; color: #999; font-size: 15px; }
+
+  @media print {
+    body { background: #fff; padding: 10px; }
+    .card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
+    .tab, .tab-add, .toolbar, .save-indicator, .del, .btn { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="container" id="app">
+
+<!-- 标签栏 -->
+<div class="tabs" id="tabBar"></div>
+
+<!-- 表头（当前课堂信息） -->
+<div class="header" id="headerArea">
+  <label>📅 <input type="date" id="classDate" onchange="onMetaChange()"></label>
+  <label>课程 <input type="text" id="className" placeholder="颜色分拣机" style="width:100px" oninput="onMetaChange()"></label>
+  <label>时段 <input type="text" id="classPeriod" placeholder="周六10:00" style="width:80px" oninput="onMetaChange()"></label>
+</div>
+
+<!-- 工具栏 -->
+<div class="toolbar">
+  <span style="font-size:13px;font-weight:600;color:#666;margin-right:4px">📋 课堂准备</span>
+  <button class="btn btn-primary" onclick="addStudent()">➕ 加学生</button>
+  <button class="btn btn-primary" onclick="batchImport()">📋 批量导入</button>
+  <span style="font-size:13px;font-weight:600;color:#666;margin:0 4px 0 12px">📤 课后</span>
+  <button class="btn btn-success" onclick="exportToAI()">📤 发给小咪生成课评</button>
+  <button class="btn btn-outline" onclick="window.print()">🖨️ 打印</button>
+  <span style="font-size:13px;font-weight:600;color:#666;margin:0 4px 0 12px">⚙️ 管理</span>
+  <button class="btn btn-outline" onclick="exportJSON()">💾 下载备份</button>
+  <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">📂 恢复备份</button>
+  <button class="btn btn-outline" onclick="clearStudents()">🗑️ 清空</button>
+  <input type="file" id="importFile" accept=".json" class="file-input-wrap" onchange="importJSON(event)">
+  <span class="save-indicator ok" id="saveIndicator">💾 已保存</span>
+</div>
+
+<!-- 学生列表 -->
+<div id="list"></div>
+
+</div>
+
+<script>
+// ======== 检查项配置 ========
+const CHECK_ITEMS = [
+  {title:'🤖 搭建', items:['结构稳定','搭建速度快','创意改装','按图搭建']},
+  {title:'💻 编程', items:['逻辑清晰','独立完成','需引导','调试能力强']},
+  {title:'🎯 课堂', items:['专注认真','积极提问','乐于分享','团队协作好']},
+  {title:'🏆 任务', items:['全部完成','基本完成','部分完成','需加时']}
+];
+
+const TAG_LIST = [
+  {text:'💡 亮点',cls:'tg-green'},
+  {text:'⚠️ 卡壳',cls:'tg-yellow'},
+  {text:'❌ 难点',cls:'tg-red'},
+  {text:'🔧 需辅导',cls:'tg-blue'}
+];
+
+const SAVE_KEY = 'lego_sessions_data';
+
+// ======== 数据模型 ========
+let sessions = [];          // 所有课堂
+let currentId = null;       // 当前选中的课堂 ID
+let storageOK = true;
+let autoSaveTimer = null;
+
+function makeSession() {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  return {
+    id: Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    meta: { classDate: dateStr, className: '', classPeriod: '' },
+    students: []
+  };
+}
+
+function makeStudent(name) {
+  return { name, checks:{}, stars:{搭建:0,编程:0,总评:0}, tags:[], note:'', status:'' };
+}
+
+// ======== 当前课堂的快捷引用 ========
+function curSession() {
+  return sessions.find(s => s.id === currentId);
+}
+function curStudents() {
+  const s = curSession();
+  return s ? s.students : [];
+}
+
+// ======== 保存 / 加载 ========
+function saveData() {
+  if (!storageOK) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ sessions, currentId }));
+    document.getElementById('saveIndicator').className = 'save-indicator ok';
+    document.getElementById('saveIndicator').textContent = '💾 已保存';
+  } catch(e) {
+    storageOK = false;
+    const el = document.getElementById('saveIndicator');
+    el.className = 'save-indicator warn';
+    el.textContent = '⚠️ 不支持自动保存，请用下载备份';
+  }
+}
+
+function debounceSave() {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(saveData, 300);
+}
+
+function loadData() {
+  try {
+    const saved = localStorage.getItem(SAVE_KEY);
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.sessions && data.sessions.length > 0) {
+        sessions = data.sessions;
+        currentId = data.currentId || sessions[0].id;
+        // 如果 currentId 对应的 session 不存在，取第一个
+        if (!sessions.find(s => s.id === currentId)) {
+          currentId = sessions[0].id;
+        }
+        return;
+      }
+    }
+  } catch(e) { storageOK = false; }
+  // 默认建一个
+  const s = makeSession();
+  sessions = [s];
+  currentId = s.id;
+  saveData();
+}
+
+// ======== 标签栏渲染 ========
+function renderTabs() {
+  const bar = document.getElementById('tabBar');
+  bar.innerHTML = sessions.map(s => {
+    const label = s.meta.className || s.meta.classPeriod || '未命名课堂';
+    const date = s.meta.classDate ? s.meta.classDate.slice(5) : '';
+    const active = s.id === currentId ? 'active' : '';
+    const studentCount = s.students.length;
+    return `<button class="tab ${active}" onclick="switchSession('${s.id}')">
+      ${date ? date + ' ' : ''}${label}${studentCount ? ' ('+studentCount+'人)' : ''}
+      <span class="close" onclick="event.stopPropagation();deleteSession('${s.id}')">✕</span>
+    </button>`;
+  }).join('');
+  bar.innerHTML += `<button class="tab-add" onclick="addSession()">➕ 新课</button>`;
+}
+
+// ======== 课堂切换 ========
+window.switchSession = function(id) {
+  currentId = id;
+  renderTabs();
+  renderHeader();
+  renderStudents();
+};
+
+// ======== 新建课堂 ========
+window.addSession = function() {
+  const s = makeSession();
+  sessions.push(s);
+  currentId = s.id;
+  renderTabs();
+  renderHeader();
+  renderStudents();
+  saveData();
+};
+
+// ======== 删除课堂 ========
+window.deleteSession = function(id) {
+  if (sessions.length <= 1) {
+    alert('至少保留一个课堂，如果要全部清空请点「清空学生」');
+    return;
+  }
+  const s = sessions.find(x => x.id === id);
+  if (!confirm(`确定删除「${s.meta.className || '未命名课堂'}」及其所有学生数据吗？`)) return;
+  sessions = sessions.filter(x => x.id !== id);
+  if (currentId === id) currentId = sessions[0].id;
+  renderTabs();
+  renderHeader();
+  renderStudents();
+  saveData();
+};
+
+// ======== 表头数据同步 ========
+function renderHeader() {
+  const s = curSession();
+  if (!s) return;
+  document.getElementById('classDate').value = s.meta.classDate || '';
+  document.getElementById('className').value = s.meta.className || '';
+  document.getElementById('classPeriod').value = s.meta.classPeriod || '';
+}
+
+window.onMetaChange = function() {
+  const s = curSession();
+  if (!s) return;
+  s.meta.classDate = document.getElementById('classDate').value;
+  s.meta.className = document.getElementById('className').value;
+  s.meta.classPeriod = document.getElementById('classPeriod').value;
+  renderTabs();
+  debounceSave();
+};
+
+// ======== 学生操作 ========
+window.addStudent = function() {
+  const s = curSession();
+  if (!s) return;
+  const name = prompt('输入学生姓名：');
+  if (name && name.trim()) {
+    s.students.push(makeStudent(name.trim()));
+    renderStudents();
+    saveData();
+    renderTabs();
+    setTimeout(() => {
+      const list = document.getElementById('list');
+      list.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+  }
+};
+
+// 批量导入学生
+window.batchImport = function() {
+  const s = curSession();
+  if (!s) return;
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  div.innerHTML = `<div style="background:#fff;border-radius:12px;padding:20px;max-width:480px;width:90%">
+    <div style="margin-bottom:10px;font-size:15px;font-weight:600">📋 批量导入学生</div>
+    <div style="font-size:13px;color:#888;margin-bottom:8px">每行一个名字，或逗号/空格分隔</div>
+    <textarea id="batchInput" style="width:100%;min-height:180px;padding:10px;font-size:14px;font-family:inherit;border:1px solid #ddd;border-radius:6px" placeholder="书韬&#10;汉庭&#10;陈俊晨, 莫雅欣, 叶锦轩"></textarea>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn btn-success" onclick="doBatchImport()">✅ 导入</button>
+      <button class="btn btn-outline" onclick="document.body.removeChild(this.closest('div').parentNode.parentNode)">取消</button>
+      <span id="batchCount" style="font-size:13px;color:#888;margin-left:auto;align-self:center"></span>
+    </div></div>`;
+  document.body.appendChild(div);
+};
+
+window.doBatchImport = function() {
+  const ta = document.getElementById('batchInput');
+  if (!ta) return;
+  const raw = ta.value.trim();
+  if (!raw) { alert('请先输入学生姓名'); return; }
+  // 先按行拆分，每行再按逗号/空格/中文逗号拆分
+  const names = raw.split(/\n/).flatMap(line =>
+    line.split(/[,，、\s]+/).map(n => n.trim()).filter(Boolean)
+  );
+  if (names.length === 0) { alert('没有有效的姓名'); return; }
+  const s = curSession();
+  if (!s) return;
+  names.forEach(n => s.students.push(makeStudent(n)));
+  renderStudents();
+  saveData();
+  renderTabs();
+  // 关闭弹窗
+  const modal = ta.closest('div').parentNode.parentNode;
+  document.body.removeChild(modal);
+  // 提示
+  const list = document.getElementById('list');
+  list.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+};
+
+window.removeStudent = function(idx) {
+  const s = curSession();
+  if (!s) return;
+  if (!confirm(`确定删除「${s.students[idx].name}」吗？`)) return;
+  s.students.splice(idx, 1);
+  renderStudents();
+  saveData();
+  renderTabs();
+};
+
+window.clearStudents = function() {
+  const s = curSession();
+  if (!s) return;
+  if (!confirm('确定清空当前课堂的所有学生？')) return;
+  s.students = [];
+  renderStudents();
+  saveData();
+  renderTabs();
+};
+
+window.renameStudent = function(idx) {
+  const s = curSession();
+  if (!s) return;
+  const newName = prompt('修改学生姓名：', s.students[idx].name);
+  if (newName && newName.trim()) {
+    s.students[idx].name = newName.trim();
+    renderStudents();
+    debounceSave();
+  }
+};
+
+// ======== 交互函数（供行内使用）=======
+window.toggleStar = function(btn, idx, cat, val) {
+  const st = curStudents();
+  if (!st[idx]) return;
+  st[idx].stars[cat] = st[idx].stars[cat] === val ? 0 : val;
+  const row = btn.parentElement;
+  row.querySelectorAll('.star-btn').forEach((b, i) => {
+    b.classList.toggle('on', i < st[idx].stars[cat]);
+  });
+  debounceSave();
+};
+
+window.toggleCheck = function(el, idx, key) {
+  const st = curStudents();
+  if (!st[idx]) return;
+  st[idx].checks[key] = el.checked;
+  debounceSave();
+};
+
+window.toggleTag = function(el, idx, text) {
+  const st = curStudents();
+  if (!st[idx]) return;
+  const arr = st[idx].tags;
+  const pos = arr.indexOf(text);
+  // 提取中文标签名（去掉 emoji）
+  const label = text.replace(/^[^a-zA-Z\u4e00-\u9fff]+/, '').replace(/\s+/g, '');
+  const prefix = label + '：';
+
+  if (pos >= 0) {
+    // 关掉标签 → 去掉备注中对应行
+    arr.splice(pos, 1);
+    el.classList.remove('on');
+    st[idx].note = st[idx].note
+      .split('\n')
+      .filter(line => !line.startsWith(prefix))
+      .join('\n')
+      .replace(/^\n+|\n+$/g, '');
+  } else {
+    // 打开标签 → 追加一行
+    arr.push(text);
+    el.classList.add('on');
+    const note = st[idx].note || '';
+    if (!note.includes(prefix)) {
+      st[idx].note = note ? note + '\n' + prefix : prefix;
+    }
+  }
+
+  // 同步更新页面上的 textarea
+  const card = el.closest('.card');
+  if (card) {
+    const ta = card.querySelector('textarea');
+    if (ta) ta.value = st[idx].note;
+  }
+
+  debounceSave();
+};
+
+window.updateNote = function(el, idx) {
+  const st = curStudents();
+  if (!st[idx]) return;
+  st[idx].note = el.value;
+  debounceSave();
+};
+
+window.updateStatus = function(el, idx) {
+  const st = curStudents();
+  if (!st[idx]) return;
+  st[idx].status = el.value;
+  const card = el.closest('.card');
+  card.className = 'card';
+  if (el.value) card.classList.add(el.value);
+  debounceSave();
+};
+
+// ======== 导出给小咪 ========
+window.exportToAI = function() {
+  const s = curSession();
+  if (!s) return;
+  const m = s.meta;
+  let lines = [`📅 ${m.classDate || '未填'} | ${m.className || '未填'} ${m.classPeriod || ''}\n`];
+  s.students.forEach(st => {
+    let tag = '';
+    if (st.status === 'good') tag = '🟢 ';
+    else if (st.status === 'mid') tag = '🟡 ';
+    else if (st.status === 'issue') tag = '🔴 ';
+    lines.push(`## ${tag}${st.name}`);
+    const checked = Object.entries(st.checks).filter(([k,v])=>v).map(([k])=>k.split('|')[1]);
+    if (checked.length) lines.push(`勾选: ${checked.join('、')}`);
+    const stars = [];
+    ['搭建','编程','总评'].forEach(c => { if (st.stars[c]) stars.push(`${c} ${'★'.repeat(st.stars[c])}${'☆'.repeat(5-st.stars[c])}`); });
+    if (stars.length) lines.push(`评分: ${stars.join(' | ')}`);
+    if (st.tags.length) lines.push(`标记: ${st.tags.join(' ')}`);
+    if (st.note.trim()) lines.push(`备注: ${st.note.trim()}`);
+    lines.push('');
+  });
+  const text = lines.join('\n');
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  div.innerHTML = `<div style="background:#fff;border-radius:12px;padding:20px;max-width:600px;width:90%;max-height:80vh;overflow:auto">
+    <div style="margin-bottom:10px;font-size:15px;font-weight:600">📤 复制下面内容，发消息给小咪：</div>
+    <textarea readonly id="exportText" style="width:100%;min-height:260px;padding:10px;font-size:13px;font-family:monospace;border:1px solid #ddd;border-radius:6px;background:#f5f6f8">${text}</textarea>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="copyExport()">📋 复制</button>
+      <button class="btn btn-outline" onclick="document.body.removeChild(this.closest('div').parentNode.parentNode)">关闭</button>
+    </div></div>`;
+  document.body.appendChild(div);
+};
+
+// 复制导出文本（兼容 file:// 协议）
+window.copyExport = function() {
+  const ta = document.getElementById('exportText');
+  if (!ta) return;
+  ta.select();
+  ta.setSelectionRange(0, 999999); // 针对移动端
+  try {
+    document.execCommand('copy');
+  } catch(e) {
+    // 实在不行就提示手动选
+    alert('复制失败，请手动选择文字后按 Ctrl+C');
+    return;
+  }
+  // 找复制按钮改文字
+  const btn = ta.closest('div').parentNode.querySelector('.btn-primary');
+  if (btn) {
+    btn.textContent = '✅ 已复制！';
+    setTimeout(() => btn.textContent = '📋 复制', 2000);
+  }
+};
+
+// ======== JSON 备份（所有课堂一起导出）=======
+window.exportJSON = function() {
+  const data = { version:1, exportedAt:new Date().toISOString(), sessions, currentId };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `课堂记录备份_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+};
+
+window.importJSON = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.sessions || !Array.isArray(data.sessions)) {
+        alert('❌ 无效的备份文件'); return;
+      }
+      // 合并还是替换？这里直接替换
+      if (sessions.length > 0 && !confirm('导入备份将替换当前所有数据，确定吗？')) return;
+      sessions = data.sessions;
+      currentId = data.currentId || sessions[0].id;
+      // 补全数据
+      sessions.forEach(s => {
+        if (!s.id) s.id = Date.now() + '_' + Math.random().toString(36).slice(2,6);
+        if (!s.meta) s.meta = { classDate:'', className:'', classPeriod:'' };
+        if (!s.students) s.students = [];
+        s.students.forEach(st => {
+          if (!st.stars) st.stars = {搭建:0,编程:0,总评:0};
+          if (!st.tags) st.tags = [];
+          if (!st.note) st.note = '';
+          if (!st.status) st.status = '';
+          if (!st.checks) st.checks = {};
+        });
+      });
+      renderAll();
+      saveData();
+      alert('✅ 备份恢复成功！');
+    } catch(err) {
+      alert('❌ 备份解析失败：' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+};
+
+// ======== 渲染学生 ========
+function renderStudents() {
+  const list = document.getElementById('list');
+  const sts = curStudents();
+  if (!sts || sts.length === 0) {
+    list.innerHTML = `<div class="empty-tip">👆 点击「➕ 加学生」添加本节课的学生</div>`;
+    return;
+  }
+  list.innerHTML = sts.map((s, idx) => {
+    // 勾选框
+    let chkHTML = CHECK_ITEMS.map(g => {
+      let items = g.items.map(item => {
+        const key = g.title + '|' + item;
+        const checked = s.checks[key] ? 'checked' : '';
+        return `<label><input type="checkbox" onclick="toggleCheck(this,${idx},'${key}')" ${checked}><span>${item}</span></label>`;
+      }).join('');
+      return `<div class="sec-title">${g.title}</div><div class="chk-group">${items}</div>`;
+    }).join('');
+
+    // 星星
+    let starHTML = '';
+    ['搭建','编程','总评'].forEach(cat => {
+      const val = s.stars[cat] || 0;
+      let btns = '';
+      for (let i = 1; i <= 5; i++) {
+        btns += `<button type="button" class="star-btn ${i<=val?'on':''}" onclick="toggleStar(this,${idx},'${cat}',${i})">★</button>`;
+      }
+      starHTML += `<div class="star-row"><span class="label">${cat}</span>${btns}</div>`;
+    });
+
+    // 快速标签
+    let tagHTML = TAG_LIST.map(t => {
+      const on = s.tags.includes(t.text) ? 'on' : '';
+      return `<button type="button" class="tag-btn ${t.cls} ${on}" onclick="toggleTag(this,${idx},'${t.text}')">${t.text}</button>`;
+    }).join('');
+
+    // 状态
+    const sel = ['','good','mid','issue'];
+    const selLabel = ['— 标记 —','🟢 优秀','🟡 一般','🔴 关注'];
+
+    return `
+      <div class="card ${s.status}">
+        <div class="card-top">
+          <span class="name" onclick="renameStudent(${idx})" title="点击改名">${s.name}</span>
+          <select onchange="updateStatus(this,${idx})" style="font-size:12px;padding:2px 5px;border-radius:6px;border:1px solid #ddd">
+            ${sel.map((v,i) => `<option value="${v}" ${s.status===v?'selected':''}>${selLabel[i]}</option>`).join('')}
+          </select>
+          <button class="del" onclick="removeStudent(${idx})" title="删除">✕</button>
+        </div>
+        ${chkHTML}
+        <div class="sec-title" style="margin-top:8px">⭐ 评分</div>
+        <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">${starHTML}</div>
+        <div class="sec-title">📌 快速标记</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">${tagHTML}</div>
+        <textarea placeholder="亮点 / 待改进 / 备注…" oninput="updateNote(this,${idx})">${s.note}</textarea>
+      </div>`;
+  }).join('');
+}
+
+function renderAll() {
+  renderTabs();
+  renderHeader();
+  renderStudents();
+}
+
+// ======== 启动 ========
+loadData();
+renderAll();
+</script>
+</body>
+</html>
