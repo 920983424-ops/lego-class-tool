@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🤖 课堂表现记录表</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -9,7 +10,7 @@
     font-family: "Microsoft YaHei","PingFang SC",sans-serif;
     background: #f0f4f8; padding: 20px; color: #1a1a2e;
   }
-  .container { max-width: 1000px; margin: 0 auto; }
+  .container { max-width: 1000px; margin: 0 auto; padding-bottom: 40px; }
 
   /* ====== 标签栏 ====== */
   .tabs {
@@ -27,8 +28,8 @@
   .tab:hover { background: #dce0e6; }
   .tab.active { background: #fff; color: #1a1a2e; box-shadow: 0 -2px 6px rgba(0,0,0,0.06); }
   .tab .close {
-    font-size: 14px; color: #999; padding: 0 2px; cursor: pointer;
-    border-radius: 4px; line-height: 1;
+    font-size: 14px; color: #999; padding: 4px 6px; cursor: pointer;
+    border-radius: 4px; line-height: 1; min-width: 24px; text-align: center;
   }
   .tab .close:hover { color: #ff3b30; background: #fee; }
   .tab-add {
@@ -84,7 +85,7 @@
     padding: 2px 6px; border-radius: 4px;
   }
   .card-top .name:hover { background: #eee; }
-  .card-top .del { margin-left: auto; background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer; }
+  .card-top .del { margin-left: auto; background: none; border: none; color: #ccc; font-size: 18px; cursor: pointer; padding: 4px 8px; min-width: 32px; }
   .card-top .del:hover { color: #ff3b30; }
 
   .sec-title { font-size: 12px; font-weight: 700; color: #999; margin: 6px 0 4px; letter-spacing: 0.3px; }
@@ -98,8 +99,8 @@
   .chk-group label:has(input:checked) { background: #eef3ff; border-color: #4f8cff; }
 
   .star-btn {
-    font-size: 22px; background: none; border: none; padding: 1px 2px;
-    cursor: pointer; color: #ddd; line-height: 1;
+    font-size: 24px; background: none; border: none; padding: 2px 4px;
+    cursor: pointer; color: #ddd; line-height: 1; min-width: 28px;
   }
   .star-btn:hover { color: #ffb84d; }
   .star-btn.on { color: #ff9f0a; }
@@ -127,6 +128,7 @@
 
   /* ====== 语音输入 ====== */
   .mic-btn {
+    position: relative;
     display: inline-flex; align-items: center; justify-content: center;
     width: 30px; height: 30px; border: none; border-radius: 50%;
     background: #e8ecf0; color: #555; font-size: 16px; cursor: pointer;
@@ -224,6 +226,7 @@
   <button class="btn btn-success" onclick="exportToAI()">📤 发给小咪生成课评</button>
   <button class="btn btn-outline" onclick="window.print()">🖨️ 打印</button>
   <span style="font-size:13px;font-weight:600;color:#666;margin:0 4px 0 12px">⚙️ 管理</span>
+  <button class="btn btn-outline" onclick="undo()" id="undoBtn" style="display:none">↩ 撤销</button>
   <button class="btn btn-outline" onclick="exportJSON()">💾 下载备份</button>
   <button class="btn btn-outline" onclick="document.getElementById('importFile').click()">📂 恢复备份</button>
   <button class="btn btn-outline" onclick="clearStudents()">🗑️ 清空</button>
@@ -253,6 +256,13 @@ const TAG_LIST = [
 ];
 
 const SAVE_KEY = 'lego_sessions_data';
+
+// ======== XSS 防护 ========
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
 // ======== 课程数据 ========
 const COURSES = {
@@ -390,6 +400,8 @@ let sessions = [];          // 所有课堂
 let currentId = null;       // 当前选中的课堂 ID
 let storageOK = true;
 let autoSaveTimer = null;
+let undoStack = [];         // 撤销栈 {label, type, students, sessionId}
+const MAX_UNDO = 20;
 
 function makeSession() {
   const now = new Date();
@@ -414,6 +426,55 @@ function curStudents() {
   const s = curSession();
   return s ? s.students : [];
 }
+
+// ======== 撤销 ========
+function pushUndo(label) {
+  const s = curSession();
+  if (!s) return;
+  undoStack.push({
+    label,
+    type: 'students',
+    sessionId: s.id,
+    students: JSON.parse(JSON.stringify(s.students))
+  });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  const btn = document.getElementById('undoBtn');
+  if (btn && undoStack.length > 0) btn.style.display = '';
+}
+
+window.undo = function() {
+  if (undoStack.length === 0) return;
+  const action = undoStack.pop();
+  const btn = document.getElementById('undoBtn');
+  if (btn && undoStack.length === 0) btn.style.display = 'none';
+
+  if (action.type === 'session') {
+    // 恢复被删除的课堂
+    sessions.push(action.session);
+    currentId = action.session.id;
+    renderAll();
+    saveData();
+  } else {
+    // 恢复学生列表
+    const s = sessions.find(x => x.id === action.sessionId);
+    if (!s) { alert('该课堂已不存在，无法撤销'); return; }
+    s.students = action.students;
+    if (currentId !== s.id) {
+      currentId = s.id;
+      renderTabs();
+      renderHeader();
+      updateGoalsDisplay();
+    }
+    renderStudents();
+    saveData();
+    renderTabs();
+  }
+  // 简短提示
+  const el = document.getElementById('saveIndicator');
+  el.textContent = '↩ 已撤销：' + action.label;
+  el.className = 'save-indicator ok';
+  setTimeout(() => { el.textContent = '💾 已保存'; }, 2000);
+};
 
 // ======== 保存 / 加载 ========
 function saveData() {
@@ -489,13 +550,13 @@ function renderTabs() {
       const c = COURSES[s.meta.courseTheme];
       if (c && c[s.meta.courseId]) courseName = c[s.meta.courseId].name;
     }
-    const label = courseName || s.meta.classPeriod || '未命名课堂';
-    const date = s.meta.classDate ? s.meta.classDate.slice(5) : '';
+    const label = escapeHtml(courseName || s.meta.classPeriod || '未命名课堂');
+    const date = s.meta.classDate ? escapeHtml(s.meta.classDate.slice(5)) : '';
     const active = s.id === currentId ? 'active' : '';
     const studentCount = s.students.length;
-    return `<button class="tab ${active}" onclick="switchSession('${s.id}')">
+    return `<button class="tab ${active}" onclick="switchSession('${escapeHtml(s.id)}')">
       ${date ? date + ' ' : ''}${label}${studentCount ? ' ('+studentCount+'人)' : ''}
-      <span class="close" onclick="event.stopPropagation();deleteSession('${s.id}')">✕</span>
+      <span class="close" onclick="event.stopPropagation();deleteSession('${escapeHtml(s.id)}')">✕</span>
     </button>`;
   }).join('');
   bar.innerHTML += `<button class="tab-add" onclick="addSession()">➕ 新课</button>`;
@@ -529,7 +590,22 @@ window.deleteSession = function(id) {
     return;
   }
   const s = sessions.find(x => x.id === id);
-  if (!confirm(`确定删除「${s.meta.className || '未命名课堂'}」及其所有学生数据吗？`)) return;
+  let delLabel = s.meta.classPeriod || '未命名课堂';
+  if (s.meta.courseTheme && s.meta.courseId >= 0) {
+    const courses = COURSES[s.meta.courseTheme];
+    if (courses && courses[s.meta.courseId]) delLabel = courses[s.meta.courseId].name;
+  }
+  if (!confirm(`确定删除「${delLabel}」及其所有学生数据吗？`)) return;
+  // 保存整个 session 用于撤销
+  undoStack.push({
+    label: '删除课堂「' + delLabel + '」',
+    type: 'session',
+    session: JSON.parse(JSON.stringify(s)),
+    sessionId: id
+  });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  const btn = document.getElementById('undoBtn');
+  if (btn) btn.style.display = '';
   sessions = sessions.filter(x => x.id !== id);
   if (currentId === id) currentId = sessions[0].id;
   renderTabs();
@@ -661,13 +737,14 @@ window.batchImport = function() {
   if (!s) return;
   const div = document.createElement('div');
   div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  div.id = 'batchImportModal';
   div.innerHTML = `<div style="background:#fff;border-radius:12px;padding:20px;max-width:480px;width:90%">
     <div style="margin-bottom:10px;font-size:15px;font-weight:600">📋 批量导入学生</div>
     <div style="font-size:13px;color:#888;margin-bottom:8px">每行一个名字，或逗号/空格分隔</div>
     <textarea id="batchInput" style="width:100%;min-height:180px;padding:10px;font-size:14px;font-family:inherit;border:1px solid #ddd;border-radius:6px" placeholder="书韬&#10;汉庭&#10;陈俊晨, 莫雅欣, 叶锦轩"></textarea>
     <div style="margin-top:10px;display:flex;gap:8px">
       <button class="btn btn-success" onclick="doBatchImport()">✅ 导入</button>
-      <button class="btn btn-outline" onclick="document.body.removeChild(this.closest('div').parentNode.parentNode)">取消</button>
+      <button class="btn btn-outline" onclick="closeBatchImport()">取消</button>
       <span id="batchCount" style="font-size:13px;color:#888;margin-left:auto;align-self:center"></span>
     </div></div>`;
   document.body.appendChild(div);
@@ -685,22 +762,28 @@ window.doBatchImport = function() {
   if (names.length === 0) { alert('没有有效的姓名'); return; }
   const s = curSession();
   if (!s) return;
+  pushUndo('批量导入 ' + names.length + ' 人');
   names.forEach(n => s.students.push(makeStudent(n)));
   renderStudents();
   saveData();
   renderTabs();
   // 关闭弹窗
-  const modal = ta.closest('div').parentNode.parentNode;
-  document.body.removeChild(modal);
+  closeBatchImport();
   // 提示
   const list = document.getElementById('list');
   list.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+};
+
+window.closeBatchImport = function() {
+  const modal = document.getElementById('batchImportModal');
+  if (modal) document.body.removeChild(modal);
 };
 
 window.removeStudent = function(idx) {
   const s = curSession();
   if (!s) return;
   if (!confirm(`确定删除「${s.students[idx].name}」吗？`)) return;
+  pushUndo('删除 ' + s.students[idx].name);
   s.students.splice(idx, 1);
   renderStudents();
   saveData();
@@ -711,6 +794,8 @@ window.clearStudents = function() {
   const s = curSession();
   if (!s) return;
   if (!confirm('确定清空当前课堂的所有学生？')) return;
+  pushUndo('清空学生');
+  undoStack[undoStack.length-1].type = 'clear';
   s.students = [];
   renderStudents();
   saveData();
@@ -775,11 +860,15 @@ window.toggleTag = function(el, idx, text) {
     }
   }
 
-  // 同步更新页面上的 textarea
+  // 同步更新页面上的 textarea，并自动聚焦
   const card = el.closest('.card');
   if (card) {
     const ta = card.querySelector('textarea');
-    if (ta) ta.value = st[idx].note;
+    if (ta) {
+      ta.value = st[idx].note;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
   }
 
   debounceSave();
@@ -797,6 +886,8 @@ let voiceRecognition = null;
 let voiceTargetIdx = -1;     // -1 = goals, >=0 = student index
 let voiceTargetEl = null;
 let voiceIsRecording = false;
+let voiceRetryCount = 0;
+const MAX_VOICE_RETRIES = 8;
 
 // 检测浏览器是否支持语音识别
 const VoiceSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -834,6 +925,7 @@ window.startVoiceInput = function(btn, idx) {
   voiceTargetIdx = idx;
   voiceTargetEl = btn;
   voiceIsRecording = true;
+  voiceRetryCount = 0;
 
   // UI反馈：点亮按钮
   btn.classList.add('recording');
@@ -887,7 +979,9 @@ window.startVoiceInput = function(btn, idx) {
         alert('⚠️ 麦克风权限被拒绝，请在浏览器设置中允许麦克风访问');
       }
     } else if (event.error === 'no-speech') {
-      // 没说话，不理它，会自动重试
+      // 没说话，让 onend 去重试（有次数限制）
+    } else if (event.error === 'aborted') {
+      // 用户主动停止或浏览器中断，不处理
     } else {
       console.warn('语音识别错误:', event.error);
     }
@@ -895,14 +989,18 @@ window.startVoiceInput = function(btn, idx) {
   };
 
   voiceRecognition.onend = function() {
-    // 如果还在录音状态但引擎停了（比如说话停顿太久），重新启动
-    if (voiceIsRecording && voiceTargetIdx === idx) {
+    // 如果还在录音状态但引擎停了（比如说话停顿太久），重新启动（有限次）
+    if (voiceIsRecording && voiceTargetIdx === idx && voiceRetryCount < MAX_VOICE_RETRIES) {
+      voiceRetryCount++;
       try {
         voiceRecognition.start();
       } catch(e) {
         stopVoiceInput();
       }
     } else {
+      if (voiceRetryCount >= MAX_VOICE_RETRIES) {
+        console.warn('语音识别达到最大重试次数，自动停止');
+      }
       stopVoiceInput();
     }
   };
@@ -955,7 +1053,12 @@ window.exportToAI = function() {
     const c = COURSES[m.courseTheme];
     if (c && c[m.courseId]) courseName = c[m.courseId].name;
   }
-  let lines = [`课程：${courseName || '未填'} | 日期：${m.classDate || '未填'} | 时段：${m.classPeriod || ''}\n`];
+  const total = s.students.length;
+  const goodCount = s.students.filter(st => st.status === 'good').length;
+  const issueCount = s.students.filter(st => st.status === 'issue').length;
+  let lines = [`课程：${courseName || '未填'} | 日期：${m.classDate || '未填'} | 时段：${m.classPeriod || ''}`];
+  lines.push(`📊 本节共 ${total} 名学生${goodCount ? '，优秀 ' + goodCount + ' 人' : ''}${issueCount ? '，需关注 ' + issueCount + ' 人' : ''}`);
+  lines.push('');
 
   // 活动目标（优先使用文本框中的内容，无论是否选课程）
   const goalsText = document.getElementById('goalsInput')?.value?.trim();
@@ -982,13 +1085,14 @@ window.exportToAI = function() {
   });
   const text = lines.join('\n');
   const div = document.createElement('div');
+  div.id = 'exportModal';
   div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
   div.innerHTML = `<div style="background:#fff;border-radius:12px;padding:20px;max-width:600px;width:90%;max-height:80vh;overflow:auto">
     <div style="margin-bottom:10px;font-size:15px;font-weight:600">📤 复制下面内容，发消息给小咪：</div>
     <textarea readonly id="exportText" style="width:100%;min-height:260px;padding:10px;font-size:13px;font-family:monospace;border:1px solid #ddd;border-radius:6px;background:#f5f6f8">${text}</textarea>
     <div style="margin-top:10px;display:flex;gap:8px">
-      <button class="btn btn-primary" onclick="copyExport()">📋 复制</button>
-      <button class="btn btn-outline" onclick="document.body.removeChild(this.closest('div').parentNode.parentNode)">关闭</button>
+      <button id="copyExportBtn" class="btn btn-primary" onclick="copyExport()">📋 复制</button>
+      <button class="btn btn-outline" onclick="closeExportModal()">关闭</button>
     </div></div>`;
   document.body.appendChild(div);
 };
@@ -1007,11 +1111,16 @@ window.copyExport = function() {
     return;
   }
   // 找复制按钮改文字
-  const btn = ta.closest('div').parentNode.querySelector('.btn-primary');
+  const btn = document.getElementById('copyExportBtn');
   if (btn) {
     btn.textContent = '✅ 已复制！';
     setTimeout(() => btn.textContent = '📋 复制', 2000);
   }
+};
+
+window.closeExportModal = function() {
+  const modal = document.getElementById('exportModal');
+  if (modal) document.body.removeChild(modal);
 };
 
 // ======== JSON 备份（所有课堂一起导出）=======
@@ -1124,7 +1233,7 @@ function renderStudents() {
     return `
       <div class="card ${s.status}">
         <div class="card-top">
-          <span class="name" onclick="renameStudent(${idx})" title="点击改名">${s.name}</span>
+          <span class="name" onclick="renameStudent(${idx})" title="点击改名">${escapeHtml(s.name)}</span>
           <select onchange="updateStatus(this,${idx})" style="font-size:12px;padding:2px 5px;border-radius:6px;border:1px solid #ddd">
             ${sel.map((v,i) => `<option value="${v}" ${s.status===v?'selected':''}>${selLabel[i]}</option>`).join('')}
           </select>
@@ -1136,7 +1245,7 @@ function renderStudents() {
         <div class="sec-title">📌 快速标记</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">${tagHTML}</div>
         <div class="note-wrap">
-          <textarea placeholder="亮点 / 待改进 / 备注…" oninput="updateNote(this,${idx})">${s.note}</textarea>
+          <textarea placeholder="亮点 / 待改进 / 备注…" oninput="updateNote(this,${idx})">${escapeHtml(s.note)}</textarea>
           <button type="button" class="mic-btn" onclick="startVoiceInput(this,${idx})" title="语音输入">🎤</button>
         </div>
         <div class="voice-hint">🎤 录音中… 说话自动转文字</div>
