@@ -125,6 +125,41 @@
   }
   textarea:focus { outline: 2px solid #4f8cff; border-color: #4f8cff; }
 
+  /* ====== 语音输入 ====== */
+  .mic-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border: none; border-radius: 50%;
+    background: #e8ecf0; color: #555; font-size: 16px; cursor: pointer;
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .mic-btn:hover { background: #dce0e6; }
+  .mic-btn.recording {
+    background: #ff3b30; color: #fff;
+    animation: mic-pulse 0.8s ease-in-out infinite;
+    box-shadow: 0 0 0 4px rgba(255,59,48,0.2);
+  }
+  @keyframes mic-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+  .mic-btn.recording::after {
+    content: ''; position: absolute; width: 100%; height: 100%; border-radius: 50%;
+    animation: mic-ring 1.2s ease-out infinite;
+    border: 2px solid rgba(255,59,48,0.4);
+  }
+  @keyframes mic-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+  .mic-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .note-wrap { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; }
+  .note-wrap textarea { margin-top: 0; flex: 1; }
+  .voice-hint {
+    font-size: 11px; color: #ff3b30; padding: 2px 0 0 0;
+    display: none; transition: all 0.2s;
+  }
+  .voice-hint.show { display: block; }
+
   .file-input-wrap { display: none; }
   .empty-tip { text-align: center; padding: 60px 20px; color: #999; font-size: 15px; }
 
@@ -171,9 +206,13 @@
     <button class="btn btn-success btn-small" onclick="copyGoals(event)" style="font-size:12px;padding:3px 10px">📋 复制活动目标</button>
     <span id="goalsHint" style="font-size:11px;color:#999;margin-left:auto">点击输入框手动填写，选择课程后自动填充</span>
   </div>
-  <textarea id="goalsInput" rows="3" placeholder="手动输入本节课的活动目标，每行一个目标&#10;或选择主题&课程自动填充"
-    style="width:100%;font-size:13px;line-height:1.7;padding:8px 10px;border:1px solid #ddd;border-radius:8px;resize:vertical;font-family:inherit;background:#fafbfc"
-    oninput="onGoalsInput()"></textarea>
+  <div style="display:flex;align-items:flex-start;gap:6px">
+    <textarea id="goalsInput" rows="3" placeholder="手动输入本节课的活动目标，每行一个目标&#10;或选择主题&课程自动填充"
+      style="flex:1;font-size:13px;line-height:1.7;padding:8px 10px;border:1px solid #ddd;border-radius:8px;resize:vertical;font-family:inherit;background:#fafbfc"
+      oninput="onGoalsInput()"></textarea>
+    <button type="button" class="mic-btn" onclick="startVoiceInput(this,-1)" title="语音输入活动目标" style="margin-top:0">🎤</button>
+  </div>
+  <div id="goalsVoiceHint" class="voice-hint" style="margin-top:4px">🎤 录音中… 说话自动转文字</div>
 </div>
 
 <!-- 工具栏 -->
@@ -753,6 +792,149 @@ window.updateNote = function(el, idx) {
   debounceSave();
 };
 
+// ======== 语音输入 ========
+let voiceRecognition = null;
+let voiceTargetIdx = -1;     // -1 = goals, >=0 = student index
+let voiceTargetEl = null;
+let voiceIsRecording = false;
+
+// 检测浏览器是否支持语音识别
+const VoiceSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+window.startVoiceInput = function(btn, idx) {
+  // idx: -1 = 活动目标, >=0 = 学生索引
+  // 如果正在录，点一下停止
+  if (voiceIsRecording && voiceTargetIdx === idx) {
+    stopVoiceInput();
+    return;
+  }
+
+  // 如果正在录别的，先停掉
+  if (voiceIsRecording) {
+    stopVoiceInput();
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    // 检测是否 file:// 协议
+    if (location.protocol === 'file:') {
+      alert('⚠️ 本地文件不支持语音识别！\n\n解决办法：\n1️⃣ 用 GitHub Pages 打开：\n   https://920983424-ops.github.io/lego-class-tool/\n\n2️⃣ 或者安装 Live Server（VS Code 插件）打开');
+    } else {
+      alert('⚠️ 您的浏览器不支持语音输入，请使用 Chrome 或 Edge 浏览器');
+    }
+    return;
+  }
+
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.lang = 'zh-CN';
+  voiceRecognition.continuous = true;
+  voiceRecognition.interimResults = true;
+  voiceRecognition.maxAlternatives = 1;
+
+  voiceTargetIdx = idx;
+  voiceTargetEl = btn;
+  voiceIsRecording = true;
+
+  // UI反馈：点亮按钮
+  btn.classList.add('recording');
+  btn.textContent = '⏹';
+  btn.title = '点击停止录音';
+
+  // 显示提示文字
+  const card = btn.closest('.card');
+  const hint = card ? card.querySelector('.voice-hint') : document.getElementById('goalsVoiceHint');
+  if (hint) hint.classList.add('show');
+
+  voiceRecognition.onresult = function(event) {
+    // 只取最终结果（isFinal），避免重复追加
+    let finalText = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalText += event.results[i][0].transcript;
+      }
+    }
+    if (!finalText) return;
+
+    // 获取目标文本区域
+    if (idx >= 0) {
+      // 学生备注
+      const st = curStudents();
+      if (st && st[idx]) {
+        st[idx].note = (st[idx].note || '') + finalText;
+      }
+      const ta = btn.closest('.card')?.querySelector('textarea');
+      if (ta) {
+        const st = curStudents();
+        ta.value = st?.[idx]?.note || '';
+      }
+    } else {
+      // 活动目标
+      const ta = document.getElementById('goalsInput');
+      if (ta) {
+        ta.value = ta.value + (ta.value ? '\n' : '') + finalText;
+        if (curSession()) curSession().customGoals = ta.value;
+      }
+    }
+    debounceSave();
+  };
+
+  voiceRecognition.onerror = function(event) {
+    console.warn('语音识别错误:', event.error);
+    if (event.error === 'not-allowed') {
+      if (location.protocol === 'file:') {
+        alert('⚠️ 麦克风被拒绝！\n\n本地文件（file://）Chrome 不允许使用麦克风。\n\n✅ 请改用这个网址打开：\nhttps://920983424-ops.github.io/lego-class-tool/');
+      } else {
+        alert('⚠️ 麦克风权限被拒绝，请在浏览器设置中允许麦克风访问');
+      }
+    } else if (event.error === 'no-speech') {
+      // 没说话，不理它，会自动重试
+    } else {
+      console.warn('语音识别错误:', event.error);
+    }
+    stopVoiceInput();
+  };
+
+  voiceRecognition.onend = function() {
+    // 如果还在录音状态但引擎停了（比如说话停顿太久），重新启动
+    if (voiceIsRecording && voiceTargetIdx === idx) {
+      try {
+        voiceRecognition.start();
+      } catch(e) {
+        stopVoiceInput();
+      }
+    } else {
+      stopVoiceInput();
+    }
+  };
+
+  try {
+    voiceRecognition.start();
+  } catch(e) {
+    stopVoiceInput();
+  }
+};
+
+function stopVoiceInput() {
+  voiceIsRecording = false;
+  if (voiceRecognition) {
+    try { voiceRecognition.stop(); } catch(e) {}
+    voiceRecognition = null;
+  }
+
+  // 重置所有 mic 按钮
+  document.querySelectorAll('.mic-btn').forEach(b => {
+    b.classList.remove('recording');
+    b.textContent = '🎤';
+    b.title = '语音输入';
+  });
+
+  // 隐藏提示
+  document.querySelectorAll('.voice-hint').forEach(h => h.classList.remove('show'));
+
+  voiceTargetIdx = -1;
+  voiceTargetEl = null;
+}
+
 window.updateStatus = function(el, idx) {
   const st = curStudents();
   if (!st[idx]) return;
@@ -953,7 +1135,11 @@ function renderStudents() {
         <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">${starHTML}</div>
         <div class="sec-title">📌 快速标记</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">${tagHTML}</div>
-        <textarea placeholder="亮点 / 待改进 / 备注…" oninput="updateNote(this,${idx})">${s.note}</textarea>
+        <div class="note-wrap">
+          <textarea placeholder="亮点 / 待改进 / 备注…" oninput="updateNote(this,${idx})">${s.note}</textarea>
+          <button type="button" class="mic-btn" onclick="startVoiceInput(this,${idx})" title="语音输入">🎤</button>
+        </div>
+        <div class="voice-hint">🎤 录音中… 说话自动转文字</div>
       </div>`;
   }).join('');
 }
