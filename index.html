@@ -63,6 +63,7 @@
   .btn-danger { background: #ff3b30; color: #fff; }
   .btn-outline { background: #fff; color: #555; border: 1px solid #ccc; }
   .save-indicator { font-size: 12px; margin-left: auto; padding: 3px 10px; border-radius: 10px; white-space: nowrap; }
+  .btn-small { padding: 3px 10px; font-size: 12px; }
   .save-indicator.ok { color: #34c759; background: #e8f5e9; }
   .save-indicator.warn { color: #ff9f0a; background: #fff8e1; }
 
@@ -143,8 +144,36 @@
 <!-- 表头（当前课堂信息） -->
 <div class="header" id="headerArea">
   <label>📅 <input type="date" id="classDate" onchange="onMetaChange()"></label>
-  <label>课程 <input type="text" id="className" placeholder="颜色分拣机" style="width:100px" oninput="onMetaChange()"></label>
+  <label>🎯 主题
+    <select id="themeSelect" onchange="onThemeChange()" style="width:95px">
+      <option value="">—</option>
+      <option value="7+">7+</option>
+      <option value="8+">8+</option>
+      <option value="9+">9+</option>
+      <option value="FLL">FLL</option>
+      <option value="WRO">WRO</option>
+      <option value="WRC-Pook">WRC Pook</option>
+      <option value="航天比赛">航天比赛</option>
+    </select>
+  </label>
+  <label>课程
+    <select id="courseSelect" onchange="onCourseChange()" style="min-width:140px">
+      <option value="">请先选择主题</option>
+    </select>
+  </label>
   <label>时段 <input type="text" id="classPeriod" placeholder="周六10:00" style="width:80px" oninput="onMetaChange()"></label>
+</div>
+
+<!-- 活动目标 -->
+<div id="goalsArea" style="background:#fff;border-radius:12px;padding:12px 18px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+    <span style="font-size:14px;font-weight:600;color:#1a1a2e">📋 本节课活动目标</span>
+    <button class="btn btn-success btn-small" onclick="copyGoals(event)" style="font-size:12px;padding:3px 10px">📋 复制活动目标</button>
+    <span id="goalsHint" style="font-size:11px;color:#999;margin-left:auto">点击输入框手动填写，选择课程后自动填充</span>
+  </div>
+  <textarea id="goalsInput" rows="3" placeholder="手动输入本节课的活动目标，每行一个目标&#10;或选择主题&课程自动填充"
+    style="width:100%;font-size:13px;line-height:1.7;padding:8px 10px;border:1px solid #ddd;border-radius:8px;resize:vertical;font-family:inherit;background:#fafbfc"
+    oninput="onGoalsInput()"></textarea>
 </div>
 
 <!-- 工具栏 -->
@@ -186,6 +215,137 @@ const TAG_LIST = [
 
 const SAVE_KEY = 'lego_sessions_data';
 
+// ======== 课程数据 ========
+const COURSES = {
+  '7+': [
+    {name:'麦乐科学漫游器', goals:['认识 WeDo 2.0 核心套装，了解各零件的名称和功能','学习如何连接智能集线器并控制马达转动','搭建机动车模型并编写程序控制其前进和后退']},
+    {name:'麦乐运动传感器', goals:['学习使用运动传感器检测物体的距离','编写程序让麦乐漫游器根据传感器数值做出不同反应','理解传感器输入与马达输出之间的因果关系']},
+    {name:'麦乐倾斜传感器', goals:['学习使用倾斜传感器检测不同的倾斜方向','通过改变传感器位置来控制马达的转动方向','编写程序实现倾斜控制小车的行驶路线']},
+    {name:'协作', goals:['学习使用两台麦乐漫游器协作完成任务','理解平行程序的概念，同时控制两个设备','通过团队合作规划搬运方案并完成挑战']},
+    {name:'记下测试结果', goals:['学习如何记录搭建和编程过程中的测试结果','了解记录数据对改进模型的重要性','能够用图表或文字展示自己的学习进展']},
+    {name:'破解赛车程式', goals:['了解程序不一定一次就能正确运行，需要调试','使用传感器为赛车程序加入安全检测功能','学习通过观察和排查找到程序中的错误']},
+    {name:'拯救北极熊', goals:['理解变量和随机模块的概念及应用场景','搭建救援场景并通过编程控制模型完成救援','能够独立调试程序并加入新的指令块解决问题']},
+    {name:'直升机救援任务', goals:['学习控制马达的不同方向和功率等级','使用变量指令改变马达的移动方式和速度','编写完整的救援程序并进行测试和调试']},
+    {name:'蜘蛛机器人', goals:['利用曲柄连杆机构搭建模仿蜘蛛运动的机器人','使用运动传感器控制蜘蛛机器人的前进和停止','利用变量模块控制机器人的运动速度和节奏']},
+    {name:'雪崩探险', goals:['搭建一台适合雪地行驶的探险车，理解履带结构','使用运动传感器检测障碍物并自动停止','编写程序控制探险车在不同地形上完成探险任务']},
+    {name:'青蛙表演', goals:['搭建一个可以表演的青蛙模型','学习使用声音模块和随机模块编写表演程序','能够组合多种模块让青蛙完成不同动作']},
+    {name:'游戏制作', goals:['使用运动传感器和颜色模块设计互动游戏','理解随机模块在游戏中的应用','编写完整的游戏程序并分享给同学体验']},
+    {name:'棒球机器人', goals:['搭建可以击球的棒球机器人模型','使用齿轮系统改变击球臂的速度和力度','使用运动传感器实现自动挥棒功能']},
+    {name:'地震测试中心', goals:['搭建地震模拟测试模型','改变马达功率来模拟不同强度的地震','使用灯光和声音编写安全预警程序']},
+    {name:'大猩猩比赛', goals:['搭建两只参加比赛的大猩猩模型','使用不同尺寸的轮子测试模型的移动性能','学习使用功率升降模块控制比赛节奏']},
+    {name:'有氧操教练', goals:['制作一个有氧健身教练机器人','为机器人编写一套完整的训练程序','使用声音和灯光效果增加训练的趣味性']},
+    {name:'机器人手臂', goals:['制作一个由传感器控制的人造手臂模型','使用运动传感器检测手势并控制手臂动作','与同学协作，用机械手臂完成抓取任务']},
+    {name:'恐龙博物馆', goals:['搭建一只可以动起来的恐龙模型','利用传感器控制恐龙张嘴和闭口的动作','设计一个可触碰激活的博物馆安全系统']},
+    {name:'飞行模拟器', goals:['搭建飞机驾驶舱的模拟器模型','使用键盘或传感器控制飞机的高度和方向','编写一段自动巡航飞行程序']},
+    {name:'旋转木马制作坊', goals:['搭建一座可以旋转的旋转木马','学习用编程控制旋转木马的转速','编写程序实现定时启动和停止功能']},
+    {name:'海豚机器人', goals:['搭建一只能摆尾游动的海豚机器人','学习使用屏幕显示模块发送和接收信息','编写程序让海豚对触碰做出反应']},
+    {name:'来自火星的消息', goals:['将驱动模型改装成火星漫游探测车','使用传感器探测模拟岩石样本','编写程序将探测信息以灯光或声音形式发送']},
+    {name:'保险柜', goals:['了解保险柜的机械锁原理和自锁结构','使用蜗轮箱搭建保险柜的锁定机构','编写密码验证程序控制保险柜的开启']},
+    {name:'尺蠖', goals:['认识尺蠖的运动方式并搭建仿生模型','学习使用电机功率模块和旋转模块编程','利用齿轮和曲柄连杆实现尺蠖的蠕动动作']},
+    {name:'捕鼠器', goals:['制作一个触发式的捕鼠装置模型','学习使用棘轮棘爪机构实现单向锁定','使用运动传感器检测老鼠并触发机关']},
+    {name:'塔吊', goals:['搭建一座带有动臂的塔吊模型','学习使用棘轮机构防止吊臂滑落','使用倾斜传感器控制塔吊的左右转向']},
+    {name:'卸货卡车', goals:['搭建一辆可以自动卸货的卡车模型','使用涡轮箱结构控制车斗的升降','使用传感器控制卡车自动完成卸货流程']},
+    {name:'蒸汽小火车', goals:['搭建一列蒸汽小火车模型，理解连杆传动原理','使用马达控制火车前进和后退','编写程序控制火车在不同站点停靠并鸣笛']},
+    {name:'自动转向车', goals:['设计并搭建一辆可以自动转向的小车','使用齿轮垂直传动改变动力传递方向','编写程序让小车沿指定路线自动行驶']},
+    {name:'悬崖勒马', goals:['了解悬崖勒马的故事并转化为机械模型','使用运动传感器检测悬崖边缘','编写程序让小车在悬崖边自动刹车']},
+    {name:'收割机', goals:['设计并搭建一台模拟收割机模型','使用齿轮传动原理实现切割转动','编写程序控制收割机前进和收割的协同动作']},
+    {name:'分拣机', goals:['搭建一个可以分拣物体的机械装置','编写程序让分拣臂根据传感器信号做出判断','理解条件判断在自动分拣中的作用']},
+    {name:'蜜蜂采蜜', goals:['搭建一只翅膀可以扇动的蜜蜂模型','使用齿轮平行传动的结构','使用运动传感器模拟蜜蜂发现花蜜并采蜜的过程']},
+    {name:'鳄鱼的嘴巴', goals:['搭建一个嘴巴可以开合的鳄鱼模型','使用皮带传动带动鳄鱼嘴巴的运动','编写程序控制鳄鱼在检测到物体时张嘴咬合']},
+    {name:'吉他手', goals:['搭建一个可以弹奏吉他的机器人乐手','使用曲柄连杆机构实现手臂摆动','为吉他手编写音乐程序，展示表演']},
+    {name:'滑翔机', goals:['搭建一架滑翔机模型并理解空气动力学','使用皮带传动原理驱动螺旋桨','使用倾斜传感器控制滑翔机的飞行姿态']},
+    {name:'遥控小车', goals:['设计搭建一辆双马达驱动的小车','使用 WeDo 2.0 软件控制小车行驶方向','编写程序实现小车的转弯和直行控制']},
+    {name:'叉车', goals:['搭建一辆带升降功能的叉车模型','使用蜗杆齿轮传动实现货叉的升降','编写程序控制叉车完成物资搬运任务']},
+    {name:'高级绘图机器人', goals:['与团队成员合作搭建绘图机器人','编写程序让机器人画出正方形或圆形','通过手动控制模式调整笔的位置']},
+    {name:'躲避障碍', goals:['制作一台可以自动躲避障碍的机器人','编写障碍检测和转向避让的程序','使用声音和灯光反馈机器人的状态']},
+    {name:'停车场计数系统', goals:['设计搭建一个带道闸的停车场模型','使用涡轮箱结构制作道闸的升降机构','编写程序实现车辆计数和自动开门功能']},
+    {name:'智能车库', goals:['了解智能车库的自动管理系统原理','学习编写计数程序，统计车库空位','用显示屏反馈当前剩余车位数量']},
+    {name:'装载系统', goals:['设计搭建一辆自动装载运输车','使用齿轮传动实现货物的装卸动作','编写完整的自动化装载和运输程序']},
+    {name:'足球小将', goals:['搭建一辆带踢球装置的足球机器人','理解异步控制，同时驱动移动和踢球','编写程序遥控足球车完成射门动作']},
+    {name:'营救行动', goals:['设计一个可救援火星探测车的营救装置','使用齿轮平行传动带动营救机械臂','编写分步程序完成探测车的营救任务']},
+    {name:'收集陨石', goals:['设计搭建一个回收陨石的机械抓手装置','使用双马达分别控制移动和抓取','编写程序完成陨石的定位和回收任务']},
+    {name:'集合队员', goals:['搭建一个集合队员的信号发射装置','使用齿轮减速传动放大马达的扭矩','编写程序控制装置按顺序发出集合信号']},
+    {name:'启动发射', goals:['搭建一个触发火箭发射的发射台装置','使用涡轮箱结构实现发射台的稳定升降','编写倒计时程序完成火箭发射模拟']}
+  ],
+  '8+': [
+    {name:'电视机', goals:['认识 SPIKE 搭建器材及基本零件','学习灯光模块的控制与使用，制作动画效果','搭建一台可以播放动画的电视机模型']},
+    {name:'SPIKE小车', goals:['设计并搭建一台 SPIKE 基础小车','掌握电机端口选择和运行度数参数的修改','利用电机模块的不同参数控制小车行驶']},
+    {name:'跳跳虫比赛', goals:['熟悉马达参数的使用，控制运动幅度','搭建一只跳跳虫并设计不同长度的手臂','对不同手臂进行测试，分析对运动的影响']},
+    {name:'机械手臂', goals:['认识力传感器的工作原理','设计一个带机械手臂的模型','利用力传感器控制机械手臂的抓取和释放']},
+    {name:'幸运大转盘', goals:['了解概率的概念及其在生活中的应用','理解随机模块的作用和使用方法','利用力传感器设计一个抽奖转盘并编程控制']},
+    {name:'陀螺发射器', goals:['熟练使用力传感器触发发射','复习二级加速齿轮传动结构','了解陀螺转动的离心力原理，搭建发射器']},
+    {name:'颜色指示器', goals:['认识生活中的指示标志及其意义','学习颜色传感器的使用方法和颜色识别','利用颜色传感器设计一个颜色指示器模型']},
+    {name:'颜色分拣机', goals:['进一步掌握颜色传感器的使用技巧','加强电机度数控制的理解和应用','设计并搭建一个能识别颜色并分拣的装置']},
+    {name:'巡线机器人', goals:['熟练使用颜色传感器检测地面路线','了解巡线机器人的基本结构和工作原理','对比单分支和双分支条件语句编程完成巡线']},
+    {name:'躲避障碍', goals:['认识距离传感器及其工作原理','设计一台可以自动躲避障碍的小车','编程利用距离传感器控制小车避障']},
+    {name:'跟随机器人', goals:['熟悉距离传感器的使用方法和参数调节','设计一台能跟随目标移动的小车','利用分支语句和距离传感器编写跟随程序']},
+    {name:'自动感应门', goals:['熟练使用距离传感器检测物体接近','利用距离传感器设计一扇自动感应门','理解等待模块在自动控制中的应用']},
+    {name:'舞蹈机器人', goals:['学习多电机协调控制实现复杂动作','复习连杆机构的工作原理和搭建方法','搭建一个可以跳舞的机器人并编写动作程序']},
+    {name:'动感单车', goals:['熟练使用连杆机构搭建运动模型','复习距离传感器的使用方法','认识声音模块，为单车添加音效反馈']},
+    {name:'投篮计数器', goals:['认识变量模块及其在计数中的应用','复习颜色传感器识别不同颜色','设计一个可以自动计数的投篮装置']},
+    {name:'高尔夫机器人', goals:['复习变量以及颜色传感器的综合使用','学习齿条传动结构的搭建方法','设计一个能击球的高尔夫机器人']},
+    {name:'碰碰车', goals:['复习力传感器检测碰撞的用法','设计一台可以碰撞反弹的小车','利用力传感器编程控制碰碰车运动方向']},
+    {name:'旋转木马', goals:['复习凸轮的结构特点和使用方法','利用凸轮机构设计一台旋转木马','利用马达模块合理控制旋转木马的速度']},
+    {name:'蒸汽小火车', goals:['熟练使用连杆结构实现车轮联动','复习颜色传感器在轨道识别中的应用','利用连杆结构设计并搭建一辆蒸汽小火车']},
+    {name:'摩天轮', goals:['复习三角形结构的稳定性特点和用途','学习弯齿条的安装和使用方法','利用弯齿条设计一个可以旋转的摩天轮']},
+    {name:'电子压力秤', goals:['复习变量模块的数据处理和显示','复习力传感器测量压力的方法','设计并搭建一台可以显示重量的电子压力秤']},
+    {name:'缝纫机', goals:['复习连杆机构的搭建和使用技巧','了解缝纫机的工作原理和用途','设计一台模拟缝纫机运动的模型']},
+    {name:'扫地机器人', goals:['了解扫地机器人的作用和工作原理','复习距离传感器检测障碍物','设计一台可以自动清扫的扫地机器人']},
+    {name:'洗手小帮手', goals:['复习距离传感器检测手部接近','利用变量和时间模块实现计时功能','搭建一个可以计时洗手时间的提醒装置']},
+    {name:'塔吊', goals:['了解塔吊的结构组成和工作原理','学习构建塔吊的基本框架和吊臂','利用卷绕结构和多电机异步控制实现吊装']},
+    {name:'挖掘机', goals:['了解挖掘机的结构组成和功能','使用触碰传感器和电机编程控制机械臂动作','熟悉多电机的异步控制协调操作']},
+    {name:'叉车', goals:['理解叉车的传动原理和升降结构','思考多种方法控制叉车的上下移动','搭建叉车模型并编程实现升降功能']},
+    {name:'电动螺丝刀', goals:['了解钻孔机和电动螺丝刀的用途与特点','学习二级加速齿轮传动的搭建方法','利用力传感器控制转速和启停']},
+    {name:'自卸卡车', goals:['学习使用连杆结构实现车斗升降','复习传感器的综合运用方法','搭建一台可以自动卸货的卡车模型']},
+    {name:'快递分拣', goals:['了解分拣机的结构组成和工作流程','熟悉颜色检测与分拣的编程逻辑','学习颜色传感器的精确运用与调试']},
+    {name:'送货上门', goals:['学习分类和卸载功能的编程思路','使用电机控制门栓结构的开合','学习颜色传感器在物流场景中的运用']},
+    {name:'签收包裹', goals:['思考快递包裹运输中的注意事项','使用颜色传感器实现定点分类功能','编写程序完成不同颜色包裹的传送和签收']},
+    {name:'名片自动盒', goals:['了解自动发送名片的机械原理','使用距离传感器触发名片推出','熟悉声音模块的使用增加交互反馈']},
+    {name:'夹娃娃机', goals:['理解齿轮传动和抓取装置的设计原理','了解机械手臂的夹取和释放动作','搭建抓取装置并编程控制爪子移动']},
+    {name:'自动售货机', goals:['设计并搭建一个自动售货机模型','理解密码程序的控制逻辑','学习计数程序与变量的综合使用']},
+    {name:'保险柜', goals:['设计并搭建一个保险箱模型','了解保险柜的门栓锁定结构','编写密码验证程序控制保险柜开启']},
+    {name:'智能垃圾桶', goals:['设计并搭建一个智能垃圾桶模型','了解垃圾分类的知识和方法','复习颜色传感器实现垃圾分类识别']},
+    {name:'洗衣机', goals:['设计并搭建一个洗衣机模型','了解洗衣机离心甩干的工作原理','利用齿轮传动实现滚筒旋转']},
+    {name:'自动窗帘', goals:['了解光污染的概念和影响','知道自动窗帘的工作原理和结构','学习颜色传感器环境光强度模块的使用']},
+    {name:'机器狗', goals:['使用连杆结构设计并搭建机器狗模型','学习仿生机器人的运动原理','使用距离传感器检测障碍物并做出反应']},
+    {name:'海龟机器人', goals:['使用连杆结构设计并搭建海龟机器人','学习仿生机器人的结构与运动','使用距离传感器控制海龟的前进和停止']},
+    {name:'蜘蛛机器人', goals:['设计并搭建仿生蜘蛛模型','了解仿生生物的机械运动原理','学习连杆结构在仿生中的应用']},
+    {name:'多米诺骨牌', goals:['设计一款可以放置多米诺骨牌的小车','知道自动放置骨牌的原理和结构','加强对电机角度和度数控制的练习']},
+    {name:'猜一猜（三仙归洞）', goals:['了解三仙归洞的游戏规则','使用电机与轮毂设计旋转切换装置','学习随机模块控制电机运行方向']},
+    {name:'反应游戏', goals:['了解反应力测试游戏的规则','掌握反应游戏的结构搭建方法','理解随机模块在不同游戏环节中的应用']},
+    {name:'别踩白块', goals:['学习传送带传动结构的设计','了解颜色传感器识别黑白颜色的原理','搭建别踩白块游戏装置并编程控制']},
+    {name:'恐龙跑酷', goals:['感受相向运动的特点和应用','学会齿轮齿条传动与皮带传动的结合使用','了解力传感器的四种状态及其应用场景']},
+    {name:'打地鼠', goals:['设计并搭建一个打地鼠游戏模型','了解多个力传感器的组合使用方式','复习随机模块和并联结构的综合运用']}
+  ],
+  '9+': [
+    {name:'小球滑梯', goals:['了解重力的作用，知道小球可以借助轨道滑梯向下滚动运输。','学习搭建小球滑梯结构，并完成电机控制放球装置。','初步学习 SPIKE Python 的导入语句和电机控制程序，能根据报错信息进行简单调试。']},
+    {name:'智能发球', goals:['了解弹力的作用，认识自动发球器的基本结构。','学习搭建智能发球机器人，完成发球与底盘转动结构。','学习在 Python 中使用电机控制和 time.sleep()，实现机器人按顺序完成动作。']},
+    {name:'循环小球', goals:['利用对向电机克服重力，实现小球循环','掌握 motor_pair 库和 while 无限循环','将物理原理与编程结合解决实际问题']},
+    {name:'幸运转盘', goals:['了解幸运转盘的基本结构，认识转盘公平随机的原理。','学习使用变量、条件循环和电机控制程序。','学会用 print() 输出关键数据。']},
+    {name:'智能搬运', goals:['搭建智能搬运叉车。','理解并掌握协程函数与事件循环。','学会使用 await 实现顺序控制。']},
+    {name:'旋转咖啡杯', goals:['掌握齿轮传动的加速减速与反向特点。','运用力传感器配合条件判断控制旋转。','建立结构与程序联动的系统分析思维。']},
+    {name:'海盗船', goals:['理解海盗船单摆运动与齿轮加减速传动原理。','运用颜色传感器与 is 关键字控制启停时机。','强化 Python 缩进规范与细致严谨编程思维。']},
+    {name:'激流勇进', goals:['掌握齿轮齿条将圆周运动转化为直线运动','运用颜色传感器测反射光强及延时控制','培养主动助人与专注坚持的课堂习惯']},
+    {name:'旋转飞椅', goals:['理解齿轮传动实现旋转运动及离心力原理','掌握嵌套循环与 break 实现电机启停控制','通过程序调试培养逻辑思维与工程素养']},
+    {name:'碰碰车', goals:['掌握齿轮传动与力传感器碰撞检测结构设计','运用变量存储力传感器数值实现电机随机转向','培养通过调试优化程序逻辑与参数的习惯']}
+  ],
+  'FLL': [
+    {name:'场地赛攻坚', goals:['了解 2026 FLL「重见天日」场地赛规则与 15 个任务得分要点','掌握任务策略制定方法，学会根据队伍特点选择任务组合','熟练搭建和编程机器人，完成场地任务']},
+    {name:'工程笔记与海报', goals:['掌握工程笔记本的完整结构（工程设计过程、迭代记录、策略分析）','学习海报设计原则，清晰展示团队历程与创新亮点','能够用图文并茂的方式向评委展示团队工作成果']},
+    {name:'创新项目攻关', goals:['结合考古主题，发现现实生活中的相关问题并确定创新方向','掌握创新项目的研究方法（调研、原型设计、测试改进）','完成创新项目展示，准备答辩内容']},
+    {name:'模拟比赛全流程', goals:['模拟场地赛完整流程（器材检查、出发、完成任务、计分），提升实战能力','模拟评委答辩环节，训练表达和临场应变能力','综合评估团队在机器人设计、创新项目和核心价值方面的表现']}
+  ],
+  'WRC-Pook': [
+    {name:'pook--月球行动培训', goals:['了解「月球行动」场地赛规则与 11 个任务得分要点，制定针对性策略','掌握机器人搭建与机械臂设计，熟练完成场地任务','掌握遥控与自主两种控制模式，提升操作精度与调试能力']}
+  ],
+  'WRO': [
+    {name:'WRO--古迹卫士培训', goals:['了解 WRO 初中组「古迹卫士」场地赛规则与 5 大任务得分要点，制定任务策略','掌握机器人自主巡线与任务精准定位技术，完成游客引导、塔楼重建等核心任务','掌握文物抓取与分类搬运的机械结构设计，提升精细操作与调试能力']}
+  ],
+  '航天比赛': [
+    {name:'火星家园挑战赛培训', goals:['了解「火星家园」场地赛规则与 5 大任务得分要点，掌握程序控制与遥控的得分系数差异','掌握机器人自主导航与精准执行技术，完成燃料加注、火箭发射、试验品转移等核心任务','掌握颜色识别与分类搬运的机械结构设计，提升精细操作与调试能力']}
+  ]
+};
+
 // ======== 数据模型 ========
 let sessions = [];          // 所有课堂
 let currentId = null;       // 当前选中的课堂 ID
@@ -197,7 +357,8 @@ function makeSession() {
   const dateStr = now.toISOString().split('T')[0];
   return {
     id: Date.now() + '_' + Math.random().toString(36).slice(2,6),
-    meta: { classDate: dateStr, className: '', classPeriod: '' },
+    meta: { classDate: dateStr, courseTheme: '', courseId: -1, classPeriod: '' },
+    customGoals: '',
     students: []
   };
 }
@@ -243,6 +404,28 @@ function loadData() {
       if (data.sessions && data.sessions.length > 0) {
         sessions = data.sessions;
         currentId = data.currentId || sessions[0].id;
+        // 兼容旧数据
+        sessions.forEach(s => {
+          if (!s.meta) s.meta = { classDate:'', courseTheme:'', courseId:-1, classPeriod:'' };
+          if (s.customGoals === undefined) s.customGoals = '';
+          if (s.meta.className && !s.meta.courseTheme) {
+            let found = false;
+            for (const theme of Object.keys(COURSES)) {
+              const idx = COURSES[theme].findIndex(c => c.name === s.meta.className);
+              if (idx >= 0) { s.meta.courseTheme = theme; s.meta.courseId = idx; found = true; break; }
+            }
+            if (!found) { s.meta.courseTheme = ''; s.meta.courseId = -1; }
+            delete s.meta.className;
+          }
+          if (!s.students) s.students = [];
+          s.students.forEach(st => {
+            if (!st.stars) st.stars = {搭建:0,编程:0,总评:0};
+            if (!st.tags) st.tags = [];
+            if (!st.note) st.note = '';
+            if (!st.status) st.status = '';
+            if (!st.checks) st.checks = {};
+          });
+        });
         // 如果 currentId 对应的 session 不存在，取第一个
         if (!sessions.find(s => s.id === currentId)) {
           currentId = sessions[0].id;
@@ -262,7 +445,12 @@ function loadData() {
 function renderTabs() {
   const bar = document.getElementById('tabBar');
   bar.innerHTML = sessions.map(s => {
-    const label = s.meta.className || s.meta.classPeriod || '未命名课堂';
+    let courseName = '';
+    if (s.meta.courseTheme && s.meta.courseId >= 0) {
+      const c = COURSES[s.meta.courseTheme];
+      if (c && c[s.meta.courseId]) courseName = c[s.meta.courseId].name;
+    }
+    const label = courseName || s.meta.classPeriod || '未命名课堂';
     const date = s.meta.classDate ? s.meta.classDate.slice(5) : '';
     const active = s.id === currentId ? 'active' : '';
     const studentCount = s.students.length;
@@ -280,6 +468,7 @@ window.switchSession = function(id) {
   renderTabs();
   renderHeader();
   renderStudents();
+  updateGoalsDisplay();
 };
 
 // ======== 新建课堂 ========
@@ -290,6 +479,7 @@ window.addSession = function() {
   renderTabs();
   renderHeader();
   renderStudents();
+  updateGoalsDisplay();
   saveData();
 };
 
@@ -314,18 +504,99 @@ function renderHeader() {
   const s = curSession();
   if (!s) return;
   document.getElementById('classDate').value = s.meta.classDate || '';
-  document.getElementById('className').value = s.meta.className || '';
   document.getElementById('classPeriod').value = s.meta.classPeriod || '';
+  // 恢复主题和课程选择
+  const themeSel = document.getElementById('themeSelect');
+  themeSel.value = s.meta.courseTheme || '';
+  updateCourseList();
+  document.getElementById('courseSelect').value = s.meta.courseId != null ? s.meta.courseId : '';
+  updateGoalsDisplay();
 }
 
 window.onMetaChange = function() {
   const s = curSession();
   if (!s) return;
   s.meta.classDate = document.getElementById('classDate').value;
-  s.meta.className = document.getElementById('className').value;
+  s.meta.courseTheme = document.getElementById('themeSelect').value;
+  const idx = parseInt(document.getElementById('courseSelect').value);
+  s.meta.courseId = isNaN(idx) ? -1 : idx;
   s.meta.classPeriod = document.getElementById('classPeriod').value;
   renderTabs();
   debounceSave();
+};
+
+// ======== 课程选择 ========
+window.onThemeChange = function() {
+  updateCourseList();
+  document.getElementById('courseSelect').value = '';
+  updateGoalsDisplay();
+  onMetaChange();
+};
+
+function updateCourseList() {
+  const theme = document.getElementById('themeSelect').value;
+  const sel = document.getElementById('courseSelect');
+  const courses = COURSES[theme] || [];
+  sel.innerHTML = '<option value="">' + (courses.length ? '请选择课程' : '暂无课程') + '</option>';
+  courses.forEach((c, i) => {
+    sel.innerHTML += `<option value="${i}">${c.name}</option>`;
+  });
+}
+
+window.onCourseChange = function() {
+  updateGoalsDisplay();
+  onMetaChange();
+};
+
+function updateGoalsDisplay() {
+  const theme = document.getElementById('themeSelect').value;
+  const idx = parseInt(document.getElementById('courseSelect').value);
+  const input = document.getElementById('goalsInput');
+  const hint = document.getElementById('goalsHint');
+  const s = curSession();
+
+  if (theme && !isNaN(idx) && idx >= 0 && COURSES[theme] && COURSES[theme][idx]) {
+    // 有选课程 → 自动填充活动目标（可编辑修改）
+    const course = COURSES[theme][idx];
+    const predefined = course.goals.map((g, i) => `${i+1}. ${g}`).join('\n');
+    input.value = predefined;
+    if (s) s.customGoals = predefined;
+    hint.textContent = '✅ 已自动填充，可继续手动修改';
+  } else {
+    // 没选课程 → 显示之前手动填写的内容
+    if (s && s.customGoals) {
+      input.value = s.customGoals;
+    } else {
+      input.value = '';
+    }
+    hint.textContent = '✏️ 手动填写活动目标，每行一个';
+  }
+}
+
+// 手动输入目标 → 自动保存
+window.onGoalsInput = function() {
+  const input = document.getElementById('goalsInput');
+  const s = curSession();
+  if (s) {
+    s.customGoals = input.value;
+    debounceSave();
+  }
+};
+
+window.copyGoals = function(e) {
+  const input = document.getElementById('goalsInput');
+  const text = input.value.trim();
+  if (!text) { alert('活动目标为空，请先填写或选择课程'); return; }
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = e.target;
+    const orig = btn.textContent;
+    btn.textContent = '✅ 已复制';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }).catch(() => {
+    // fallback
+    input.select();
+    document.execCommand('copy');
+  });
 };
 
 // ======== 学生操作 ========
@@ -497,20 +768,34 @@ window.exportToAI = function() {
   const s = curSession();
   if (!s) return;
   const m = s.meta;
-  let lines = [`📅 ${m.classDate || '未填'} | ${m.className || '未填'} ${m.classPeriod || ''}\n`];
+  let courseName = '';
+  if (m.courseTheme && m.courseId >= 0) {
+    const c = COURSES[m.courseTheme];
+    if (c && c[m.courseId]) courseName = c[m.courseId].name;
+  }
+  let lines = [`课程：${courseName || '未填'} | 日期：${m.classDate || '未填'} | 时段：${m.classPeriod || ''}\n`];
+
+  // 活动目标（优先使用文本框中的内容，无论是否选课程）
+  const goalsText = document.getElementById('goalsInput')?.value?.trim();
+  if (goalsText) {
+    lines.push('活动目标：');
+    goalsText.split('\n').forEach(line => {
+      if (line.trim()) lines.push(line.trim());
+    });
+    lines.push('');
+  }
+
   s.students.forEach(st => {
-    let tag = '';
-    if (st.status === 'good') tag = '🟢 ';
-    else if (st.status === 'mid') tag = '🟡 ';
-    else if (st.status === 'issue') tag = '🔴 ';
-    lines.push(`## ${tag}${st.name}`);
+    lines.push(`## ${st.name}`);
     const checked = Object.entries(st.checks).filter(([k,v])=>v).map(([k])=>k.split('|')[1]);
-    if (checked.length) lines.push(`勾选: ${checked.join('、')}`);
+    if (checked.length) lines.push(`勾选：${checked.join('、')}`);
     const stars = [];
-    ['搭建','编程','总评'].forEach(c => { if (st.stars[c]) stars.push(`${c} ${'★'.repeat(st.stars[c])}${'☆'.repeat(5-st.stars[c])}`); });
-    if (stars.length) lines.push(`评分: ${stars.join(' | ')}`);
-    if (st.tags.length) lines.push(`标记: ${st.tags.join(' ')}`);
-    if (st.note.trim()) lines.push(`备注: ${st.note.trim()}`);
+    ['搭建','编程','总评'].forEach(c => {
+      if (st.stars[c]) stars.push(`${c}：${st.stars[c]}分`);
+    });
+    if (stars.length) lines.push(`评分：${stars.join(' | ')}`);
+    if (st.tags.length) lines.push(`标记：${st.tags.join(' ')}`);
+    if (st.note.trim()) lines.push(`备注：${st.note.trim()}`);
     lines.push('');
   });
   const text = lines.join('\n');
@@ -571,10 +856,29 @@ window.importJSON = function(event) {
       if (sessions.length > 0 && !confirm('导入备份将替换当前所有数据，确定吗？')) return;
       sessions = data.sessions;
       currentId = data.currentId || sessions[0].id;
-      // 补全数据
+      // 补全和兼容数据
       sessions.forEach(s => {
         if (!s.id) s.id = Date.now() + '_' + Math.random().toString(36).slice(2,6);
-        if (!s.meta) s.meta = { classDate:'', className:'', classPeriod:'' };
+        if (!s.meta) s.meta = { classDate:'', courseTheme:'', courseId:-1, classPeriod:'' };
+        // 兼容旧数据（className → courseTheme/courseId）
+        if (s.meta.className && !s.meta.courseTheme) {
+          // 尝试在 COURSES 中匹配课程名
+          let found = false;
+          for (const theme of Object.keys(COURSES)) {
+            const idx = COURSES[theme].findIndex(c => c.name === s.meta.className);
+            if (idx >= 0) {
+              s.meta.courseTheme = theme;
+              s.meta.courseId = idx;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            s.meta.courseTheme = '';
+            s.meta.courseId = -1;
+          }
+          delete s.meta.className;
+        }
         if (!s.students) s.students = [];
         s.students.forEach(st => {
           if (!st.stars) st.stars = {搭建:0,编程:0,总评:0};
