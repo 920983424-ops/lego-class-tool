@@ -4,6 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🤖 课堂表现记录表</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-compat.js"></script>
+
+<script>
+// ======== Firebase 配置 ========
+const firebaseConfig = {
+  apiKey: "AIzaSyC40tRWAo3FiBbVo2ZpsCpvhLJhAMEEv6E",
+  authDomain: "lego-class-tool.firebaseapp.com",
+  projectId: "lego-class-tool",
+  storageBucket: "lego-class-tool.firebasestorage.app",
+  messagingSenderId: "389591072182",
+  appId: "1:389591072182:web:dcde0e9905121fad5cd517",
+  measurementId: "G-E5SGYG1276"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+db.settings({ merge: true });
+
+let currentUser = null;       // 当前登录用户
+let cloudLoaded = false;      // 云端数据是否已加载
+let cloudSavePending = false; // 是否有待上传的修改
+let cloudTimer = null;        // 节流上传定时器
+</script>
+
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -162,6 +190,49 @@
   }
   .voice-hint.show { display: block; }
 
+  /* ====== 登录弹窗 ====== */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-box {
+    background: #fff; border-radius: 16px; padding: 28px 32px;
+    width: 360px; max-width: 90%; box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+  }
+  .modal-box h3 { font-size: 18px; margin-bottom: 8px; color: #1a1a2e; }
+  .modal-box .desc { font-size: 13px; color: #888; margin-bottom: 20px; }
+  .modal-box .btn-block {
+    display: block; width: 100%; padding: 11px; margin-bottom: 10px;
+    border: none; border-radius: 10px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .modal-box .btn-block:hover { transform: translateY(-1px); }
+  .modal-box .btn-google { background: #fff; color: #444; border: 1px solid #ddd; }
+  .modal-box .btn-google:hover { background: #f5f5f5; }
+  .modal-box .btn-email { background: #4f8cff; color: #fff; }
+  .modal-box .btn-email:hover { background: #3d7ae8; }
+  .modal-box .divider {
+    text-align: center; color: #bbb; font-size: 12px; margin: 14px 0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .modal-box .divider::before, .modal-box .divider::after {
+    content: ''; flex: 1; height: 1px; background: #eee;
+  }
+  .modal-box input[type="email"], .modal-box input[type="password"] {
+    display: block; width: 100%; padding: 10px 12px; margin-bottom: 10px;
+    border: 1px solid #ddd; border-radius: 8px; font-size: 14px;
+    box-sizing: border-box;
+  }
+  .modal-box input:focus { outline: 2px solid #4f8cff; border-color: #4f8cff; }
+  .modal-box .row { display: flex; gap: 8px; }
+  .modal-box .row .btn-block { flex: 1; }
+  .modal-box .close-btn {
+    float: right; background: none; border: none; font-size: 22px;
+    color: #999; cursor: pointer; padding: 0; line-height: 1;
+  }
+  .modal-box .close-btn:hover { color: #333; }
+
   .file-input-wrap { display: none; }
   .empty-tip { text-align: center; padding: 60px 20px; color: #999; font-size: 15px; }
 
@@ -174,6 +245,18 @@
 </head>
 <body>
 <div class="container" id="app">
+
+<!-- ====== 登录栏 ====== -->
+<div id="authBar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;background:#fff;border-radius:12px;padding:10px 18px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+  <span style="font-size:14px;font-weight:600;color:#1a1a2e">🐱 课堂记录表</span>
+  <span style="flex:1"></span>
+  <button id="loginBtn" class="btn btn-primary" onclick="showLoginModal()" style="display:none">🔑 登录</button>
+  <span id="userInfo" style="display:none;font-size:13px;color:#666">
+    👤 <span id="userName"></span>
+    <button class="btn btn-outline btn-small" onclick="handleLogout()" style="margin-left:6px">退出</button>
+  </span>
+  <span id="cloudStatus" style="font-size:12px;color:#999"></span>
+</div>
 
 <!-- 标签栏 -->
 <div class="tabs" id="tabBar"></div>
@@ -489,6 +572,30 @@ function saveData() {
     el.className = 'save-indicator warn';
     el.textContent = '⚠️ 不支持自动保存，请用下载备份';
   }
+  // 同时上传到云端
+  scheduleCloudSave();
+}
+
+function scheduleCloudSave() {
+  if (!currentUser) return;
+  cloudSavePending = true;
+  if (cloudTimer) clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(uploadToCloud, 2000);
+}
+
+async function uploadToCloud() {
+  if (!currentUser || !cloudSavePending) return;
+  cloudSavePending = false;
+  try {
+    await db.collection('users').doc(currentUser.uid).set({
+      data: JSON.stringify({ sessions, currentId }),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('cloudStatus').textContent = '☁️ 已同步';
+  } catch(e) {
+    console.warn('☁️ 云端同步失败:', e);
+    document.getElementById('cloudStatus').textContent = '⚠️ 同步失败';
+  }
 }
 
 function debounceSave() {
@@ -496,7 +603,7 @@ function debounceSave() {
   autoSaveTimer = setTimeout(saveData, 300);
 }
 
-function loadData() {
+function loadFromLocal() {
   try {
     const saved = localStorage.getItem(SAVE_KEY);
     if (saved) {
@@ -504,41 +611,81 @@ function loadData() {
       if (data.sessions && data.sessions.length > 0) {
         sessions = data.sessions;
         currentId = data.currentId || sessions[0].id;
-        // 兼容旧数据
-        sessions.forEach(s => {
-          if (!s.meta) s.meta = { classDate:'', courseTheme:'', courseId:-1, classPeriod:'' };
-          if (s.customGoals === undefined) s.customGoals = '';
-          if (s.meta.className && !s.meta.courseTheme) {
-            let found = false;
-            for (const theme of Object.keys(COURSES)) {
-              const idx = COURSES[theme].findIndex(c => c.name === s.meta.className);
-              if (idx >= 0) { s.meta.courseTheme = theme; s.meta.courseId = idx; found = true; break; }
-            }
-            if (!found) { s.meta.courseTheme = ''; s.meta.courseId = -1; }
-            delete s.meta.className;
-          }
-          if (!s.students) s.students = [];
-          s.students.forEach(st => {
-            if (!st.stars) st.stars = {搭建:0,编程:0,总评:0};
-            if (!st.tags) st.tags = [];
-            if (!st.note) st.note = '';
-            if (!st.status) st.status = '';
-            if (!st.checks) st.checks = {};
-          });
-        });
-        // 如果 currentId 对应的 session 不存在，取第一个
-        if (!sessions.find(s => s.id === currentId)) {
-          currentId = sessions[0].id;
-        }
-        return;
+        migrateSessions(sessions);
+        return true;
       }
     }
   } catch(e) { storageOK = false; }
-  // 默认建一个
-  const s = makeSession();
-  sessions = [s];
-  currentId = s.id;
-  saveData();
+  return false;
+}
+
+function migrateSessions(arr) {
+  arr.forEach(s => {
+    if (!s.meta) s.meta = { classDate:'', courseTheme:'', courseId:-1, classPeriod:'' };
+    if (s.customGoals === undefined) s.customGoals = '';
+    if (s.meta.className && !s.meta.courseTheme) {
+      let found = false;
+      for (const theme of Object.keys(COURSES)) {
+        const idx = COURSES[theme].findIndex(c => c.name === s.meta.className);
+        if (idx >= 0) { s.meta.courseTheme = theme; s.meta.courseId = idx; found = true; break; }
+      }
+      if (!found) { s.meta.courseTheme = ''; s.meta.courseId = -1; }
+      delete s.meta.className;
+    }
+    if (!s.students) s.students = [];
+    s.students.forEach(st => {
+      if (!st.stars) st.stars = {搭建:0,编程:0,总评:0};
+      if (!st.tags) st.tags = [];
+      if (!st.note) st.note = '';
+      if (!st.status) st.status = '';
+      if (!st.checks) st.checks = {};
+    });
+  });
+}
+
+function loadData() {
+  const localLoaded = loadFromLocal();
+
+  if (!currentUser) {
+    // 未登录 → 只用本地数据
+    if (!localLoaded) {
+      const s = makeSession();
+      sessions = [s]; currentId = s.id;
+      saveData();
+    }
+    renderAll();
+    return;
+  }
+
+  // 已登录 → 尝试从云端加载
+  cloudLoaded = false;
+  document.getElementById('cloudStatus').textContent = '☁️ 加载中…';
+  loadFromCloud();
+}
+
+async function loadFromCloud() {
+  if (!currentUser) return;
+  try {
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    if (doc.exists) {
+      const raw = doc.data().data;
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data.sessions && data.sessions.length > 0) {
+          sessions = data.sessions;
+          currentId = data.currentId || sessions[0].id;
+          migrateSessions(sessions);
+          // 也存本地做缓存
+          try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sessions, currentId })); } catch(e) {}
+          document.getElementById('cloudStatus').textContent = '☁️ 已同步';
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('☁️ 云端加载失败，使用本地数据:', e);
+    document.getElementById('cloudStatus').textContent = '⚠️ 离线模式';
+  }
+  renderAll();
 }
 
 // ======== 标签栏渲染 ========
@@ -1259,8 +1406,150 @@ function renderAll() {
   renderStudents();
 }
 
+// ======== 登录弹窗 / 邮箱登录 ========
+window.showLoginModal = function() {
+  // 移除旧弹窗
+  const old = document.querySelector('.modal-overlay');
+  if (old) old.remove();
+
+  const div = document.createElement('div');
+  div.className = 'modal-overlay';
+  div.id = 'loginModal';
+  div.innerHTML = `
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <button class="close-btn" onclick="closeLoginModal()">×</button>
+      <h3>🔑 登录课堂记录表</h3>
+      <div class="desc">登录后数据自动同步到云端，换设备也能用</div>
+
+      <button class="btn-block btn-google" onclick="handleGoogleLogin()">🌐 使用 Google 账号登录</button>
+
+      <div class="divider"><span>或</span></div>
+
+      <div id="emailLoginForm">
+        <input type="email" id="loginEmail" placeholder="邮箱地址（QQ/163/Google 等）" autocomplete="email">
+        <input type="password" id="loginPassword" placeholder="密码（至少6位）" autocomplete="current-password">
+        <div class="row">
+          <button class="btn-block btn-email" onclick="handleEmailLogin()">📧 登录</button>
+          <button class="btn-block btn-email" onclick="handleEmailRegister()" style="background:#34c759">✨ 注册</button>
+        </div>
+        <div id="loginError" style="color:#ff3b30;font-size:13px;margin-top:6px;display:none"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+
+  // 回车键登录
+  div.querySelector('#loginPassword').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') handleEmailLogin();
+  });
+};
+
+window.closeLoginModal = function() {
+  const el = document.getElementById('loginModal');
+  if (el) el.remove();
+};
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  if (el) { el.textContent = msg; el.style.display = ''; }
+}
+
+// Google 登录
+window.handleGoogleLogin = function() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(function(e) {
+    showLoginError('Google 登录失败：' + e.message);
+  });
+};
+
+// 邮箱密码登录
+window.handleEmailLogin = function() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPassword').value;
+  if (!email) { showLoginError('请输入邮箱'); return; }
+  if (!pass) { showLoginError('请输入密码'); return; }
+  showLoginError('登录中…');
+  auth.signInWithEmailAndPassword(email, pass).catch(function(e) {
+    if (e.code === 'auth/user-not-found') {
+      showLoginError('该邮箱未注册，请先点击「注册」创建账号');
+    } else if (e.code === 'auth/wrong-password') {
+      showLoginError('密码错误');
+    } else if (e.code === 'auth/invalid-email') {
+      showLoginError('邮箱格式不正确');
+    } else if (e.code === 'auth/invalid-credential') {
+      showLoginError('邮箱或密码错误');
+    } else {
+      showLoginError('登录失败：' + e.message);
+    }
+  });
+};
+
+// 邮箱密码注册
+window.handleEmailRegister = function() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPassword').value;
+  if (!email) { showLoginError('请输入邮箱'); return; }
+  if (!pass) { showLoginError('请输入密码'); return; }
+  if (pass.length < 6) { showLoginError('密码至少 6 位'); return; }
+  showLoginError('注册中…');
+  auth.createUserWithEmailAndPassword(email, pass).catch(function(e) {
+    if (e.code === 'auth/email-already-in-use') {
+      showLoginError('该邮箱已注册，请直接登录');
+    } else {
+      showLoginError('注册失败：' + e.message);
+    }
+  });
+};
+
+window.handleLogout = function() {
+  if (!confirm('确定退出登录？退出后本地数据还在，但不会自动同步到云端')) return;
+  auth.signOut();
+};
+
+// 监听登录状态
+auth.onAuthStateChanged(function(user) {
+  const loginBtn = document.getElementById('loginBtn');
+  const userInfo = document.getElementById('userInfo');
+  const userName = document.getElementById('userName');
+  const cloudStatus = document.getElementById('cloudStatus');
+
+  if (user) {
+    currentUser = user;
+    closeLoginModal();
+    loginBtn.style.display = 'none';
+    userInfo.style.display = '';
+    userName.textContent = user.displayName || user.email || '用户';
+    cloudStatus.textContent = '☁️ 加载中…';
+
+    // 检查是否是本地数据为空但云端有数据
+    if (sessions.length === 0) {
+      loadFromCloud();
+    } else {
+      // 有本地数据 → 同步到云端
+      scheduleCloudSave();
+      renderAll();
+    }
+  } else {
+    currentUser = null;
+    loginBtn.style.display = '';
+    userInfo.style.display = 'none';
+    cloudStatus.textContent = '💻 本地模式';
+
+    // 未登录：只用 localStorage
+    if (!loadFromLocal()) {
+      const s = makeSession();
+      sessions = [s]; currentId = s.id;
+      saveData();
+    }
+    renderAll();
+  }
+});
+
 // ======== 启动 ========
-loadData();
+// 先尝试从本地加载数据，同时 Firebase auth 会异步触发 onAuthStateChanged
+if (!loadFromLocal()) {
+  const s = makeSession();
+  sessions = [s]; currentId = s.id;
+}
 renderAll();
 </script>
 </body>
