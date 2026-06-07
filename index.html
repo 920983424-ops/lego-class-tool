@@ -677,15 +677,20 @@ async function loadFromCloud() {
           migrateSessions(sessions);
           // 也存本地做缓存
           try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sessions, currentId })); } catch(e) {}
-          document.getElementById('cloudStatus').textContent = '☁️ 已同步';
+          console.log('☁️ 云端数据已加载');
         }
       }
+    } else {
+      // 云端没有数据 → 把本地数据上传
+      console.log('☁️ 云端无数据，上传本地数据');
+      await uploadToCloud();
     }
   } catch(e) {
     console.warn('☁️ 云端加载失败，使用本地数据:', e);
-    document.getElementById('cloudStatus').textContent = '⚠️ 离线模式';
   }
   renderAll();
+  // 上传本地可能的新数据
+  scheduleCloudSave();
 }
 
 // ======== 标签栏渲染 ========
@@ -1520,14 +1525,8 @@ auth.onAuthStateChanged(function(user) {
     userName.textContent = user.displayName || user.email || '用户';
     cloudStatus.textContent = '☁️ 加载中…';
 
-    // 检查是否是本地数据为空但云端有数据
-    if (sessions.length === 0) {
-      loadFromCloud();
-    } else {
-      // 有本地数据 → 同步到云端
-      scheduleCloudSave();
-      renderAll();
-    }
+    // 登录后始终尝试从云端加载
+    loadFromCloud();
   } else {
     currentUser = null;
     loginBtn.style.display = '';
