@@ -27,15 +27,15 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 db.settings({ merge: true });
 
-// ======== App Check（防机器人）=======
-const appCheck = firebase.appCheck();
-appCheck.activate('6Lfd6hQtAAAAAKwMo5R-iBWsWN6bpFnZy2-Rz92R', true);
-
 let currentUser = null;       // 当前登录用户
 let cloudLoaded = false;      // 云端数据是否已加载
 let cloudSavePending = false; // 是否有待上传的修改
 let cloudTimer = null;        // 节流上传定时器
 let initialAuthChecked = false; // 首次 auth 状态是否已处理
+
+// ======== App Check（防机器人）=======
+const appCheck = firebase.appCheck();
+appCheck.activate('6Lfd6hQtAAAAAKwMo5R-iBWsWN6bpFnZy2-Rz92R', true);
 </script>
 
 <style>
@@ -1509,7 +1509,15 @@ window.handleEmailRegister = function() {
   if (!pass) { showLoginError('请输入密码'); return; }
   if (pass.length < 6) { showLoginError('密码至少 6 位'); return; }
   showLoginError('注册中…');
+  // 15 秒超时兜底（App Check 失败时 Promise 可能不 resolve）
+  var registerTimedOut = false;
+  var registerTimer = setTimeout(function() {
+    registerTimedOut = true;
+    showLoginError('注册超时，请检查网络或刷新重试。可能是 App Check 域名未授权，按 F12 查看控制台');
+  }, 15000);
   auth.createUserWithEmailAndPassword(email, pass).then(function(result) {
+    if (registerTimedOut) return;
+    clearTimeout(registerTimer);
     // 发送验证邮件
     result.user.sendEmailVerification().catch(function(e) {
       console.warn('发送验证邮件失败:', e);
@@ -1518,6 +1526,8 @@ window.handleEmailRegister = function() {
     closeLoginModal();
     showLoginError('');
   }).catch(function(e) {
+    clearTimeout(registerTimer);
+    if (registerTimedOut) return;
     if (e.code === 'auth/email-already-in-use') {
       showLoginError('该邮箱已注册，请直接登录');
     } else {
