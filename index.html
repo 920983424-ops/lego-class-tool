@@ -9,6 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-app-check-compat.js"></script>
 
 <script>
 // ======== Firebase 配置 ========
@@ -25,6 +26,10 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 db.settings({ merge: true });
+
+// ======== App Check（防机器人）=======
+const appCheck = firebase.appCheck();
+appCheck.activate('6Lfd6hQtAAAAAKwMo5R-iBWsWN6bpFnZy2-Rz92R', true);
 
 let currentUser = null;       // 当前登录用户
 let cloudLoaded = false;      // 云端数据是否已加载
@@ -1626,20 +1631,12 @@ auth.onAuthStateChanged(function(user) {
     currentUser = user;
     closeLoginModal();
 
-    // 判断是否为邮箱注册用户，且未验证邮箱
-    // Google 登录的用户 emailVerified 自动为 true，不用拦截
+    // 邮箱注册且未验证邮箱 → 拦截，显示验证弹窗
+    // Google 登录的 emailVerified 始终为 true，不会被拦截
     if (!user.emailVerified) {
-      // 检查是否有 password 提供商（即邮箱注册用户）
-      var hasPwd = false;
-      user.providerData.forEach(function(p) {
-        if (p.providerId === 'password') hasPwd = true;
-      });
-      if (hasPwd) {
-        // 邮箱注册但未验证 → 显示验证提示弹窗
-        loginBtn.style.display = 'none';
-        showVerifyModal(user);
-        return;
-      }
+      loginBtn.style.display = 'none';
+      showVerifyModal(user);
+      return;
     }
 
     afterLogin(user);
