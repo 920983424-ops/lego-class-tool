@@ -30,6 +30,7 @@ let currentUser = null;       // 当前登录用户
 let cloudLoaded = false;      // 云端数据是否已加载
 let cloudSavePending = false; // 是否有待上传的修改
 let cloudTimer = null;        // 节流上传定时器
+let initialAuthChecked = false; // 首次 auth 状态是否已处理
 </script>
 
 <style>
@@ -232,6 +233,13 @@ let cloudTimer = null;        // 节流上传定时器
     color: #999; cursor: pointer; padding: 0; line-height: 1;
   }
   .modal-box .close-btn:hover { color: #333; }
+
+  /* ====== 验证邮箱弹窗 ====== */
+  .verify-modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+  }
 
   .file-input-wrap { display: none; }
   .empty-tip { text-align: center; padding: 60px 20px; color: #999; font-size: 15px; }
@@ -806,7 +814,7 @@ function updateCourseList() {
   const courses = COURSES[theme] || [];
   sel.innerHTML = '<option value="">' + (courses.length ? '请选择课程' : '暂无课程') + '</option>';
   courses.forEach((c, i) => {
-    sel.innerHTML += `<option value="${i}">${c.name}</option>`;
+    sel.innerHTML += `<option value="${i}">${escapeHtml(c.name)}</option>`;
   });
 }
 
@@ -1241,7 +1249,7 @@ window.exportToAI = function() {
   div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
   div.innerHTML = `<div style="background:#fff;border-radius:12px;padding:20px;max-width:600px;width:90%;max-height:80vh;overflow:auto">
     <div style="margin-bottom:10px;font-size:15px;font-weight:600">📤 复制下面内容，发消息给小咪：</div>
-    <textarea readonly id="exportText" style="width:100%;min-height:260px;padding:10px;font-size:13px;font-family:monospace;border:1px solid #ddd;border-radius:6px;background:#f5f6f8">${text}</textarea>
+    <textarea readonly id="exportText" style="width:100%;min-height:260px;padding:10px;font-size:13px;font-family:monospace;border:1px solid #ddd;border-radius:6px;background:#f5f6f8">${escapeHtml(text)}</textarea>
     <div style="margin-top:10px;display:flex;gap:8px">
       <button id="copyExportBtn" class="btn btn-primary" onclick="copyExport()">📋 复制</button>
       <button class="btn btn-outline" onclick="closeExportModal()">关闭</button>
@@ -1496,7 +1504,15 @@ window.handleEmailRegister = function() {
   if (!pass) { showLoginError('请输入密码'); return; }
   if (pass.length < 6) { showLoginError('密码至少 6 位'); return; }
   showLoginError('注册中…');
-  auth.createUserWithEmailAndPassword(email, pass).catch(function(e) {
+  auth.createUserWithEmailAndPassword(email, pass).then(function(result) {
+    // 发送验证邮件
+    result.user.sendEmailVerification().catch(function(e) {
+      console.warn('发送验证邮件失败:', e);
+    });
+    // 提前关闭登录弹窗，等 onAuthStateChanged 弹出验证提示
+    closeLoginModal();
+    showLoginError('');
+  }).catch(function(e) {
     if (e.code === 'auth/email-already-in-use') {
       showLoginError('该邮箱已注册，请直接登录');
     } else {
@@ -1505,10 +1521,99 @@ window.handleEmailRegister = function() {
   });
 };
 
+// 显示邮箱验证提示弹窗
+window.showVerifyModal = function(user) {
+  const old = document.querySelector('.verify-modal-overlay');
+  if (old) old.remove();
+
+  const email = user.email || '';
+  const div = document.createElement('div');
+  div.className = 'verify-modal-overlay';
+  div.id = 'verifyModal';
+  div.innerHTML = `
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <h3>📧 验证邮箱</h3>
+      <div class="desc">
+        已发送验证邮件到 <strong>${email}</strong>，请前往邮箱点击验证链接。
+        <br><br>
+        没收到？检查垃圾箱，或点击下方重新发送。
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn-block btn-email" onclick="resendVerifyEmail()">🔄 重新发送验证邮件</button>
+        <button class="btn-block btn-email" onclick="checkEmailVerified()" style="background:#34c759">✅ 我已验证，进入</button>
+        <button class="btn-block" onclick="skipVerify()" style="background:#f5f6f8;color:#555">⏭ 稍后验证，先用本地模式</button>
+        <button class="btn-block" onclick="handleLogout()" style="background:#999;color:#fff">← 换个账号</button>
+      </div>
+      <div id="verifyStatus" style="color:#888;font-size:13px;margin-top:8px;text-align:center"></div>
+    </div>`;
+  document.body.appendChild(div);
+};
+
+window.resendVerifyEmail = function() {
+  const st = document.getElementById('verifyStatus');
+  if (st) st.textContent = '📨 发送中…';
+  if (auth.currentUser) {
+    auth.currentUser.sendEmailVerification().then(function() {
+      if (st) st.textContent = '✅ 验证邮件已发送，请查收';
+    }).catch(function(e) {
+      if (st) st.textContent = '❌ 发送失败：' + e.message;
+    });
+  }
+};
+
+window.checkEmailVerified = function() {
+  const st = document.getElementById('verifyStatus');
+  if (st) st.textContent = '⏳ 检查中…';
+  if (auth.currentUser) {
+    auth.currentUser.reload().then(function() {
+      if (auth.currentUser.emailVerified) {
+        // 已验证→关闭验证弹窗，正常加载
+        const el = document.getElementById('verifyModal');
+        if (el) el.remove();
+        afterLogin(auth.currentUser);
+      } else {
+        if (st) st.textContent = '❌ 还没验证，再检查一下邮箱吧';
+      }
+    }).catch(function(e) {
+      if (st) st.textContent = '❌ 检查失败：' + e.message;
+    });
+  }
+};
+
+window.skipVerify = function() {
+  const el = document.getElementById('verifyModal');
+  if (el) el.remove();
+  // 保持登录状态但使用本地模式，云端同步会被 currentUser 守卫拦住
+  const cloudStatus = document.getElementById('cloudStatus');
+  if (cloudStatus) cloudStatus.textContent = '⚠️ 邮箱未验证，仅本地模式';
+  const loginBtn = document.getElementById('loginBtn');
+  const userInfo = document.getElementById('userInfo');
+  const userName = document.getElementById('userName');
+  if (loginBtn) loginBtn.style.display = 'none';
+  if (userInfo) userInfo.style.display = '';
+  if (userName) userName.textContent = (auth.currentUser && auth.currentUser.email) || '用户';
+  // 不调用 loadFromCloud，直接用已有本地数据
+};
+
 window.handleLogout = function() {
   if (!confirm('确定退出登录？退出后本地数据还在，但不会自动同步到云端')) return;
+  if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = null; }
+  cloudSavePending = false;
   auth.signOut();
 };
+
+// 登录成功后的操作（加载云端数据）
+function afterLogin(user) {
+  const loginBtn = document.getElementById('loginBtn');
+  const userInfo = document.getElementById('userInfo');
+  const userName = document.getElementById('userName');
+  const cloudStatus = document.getElementById('cloudStatus');
+  loginBtn.style.display = 'none';
+  userInfo.style.display = '';
+  userName.textContent = user.displayName || user.email || '用户';
+  cloudStatus.textContent = '☁️ 加载中…';
+  loadFromCloud();
+}
 
 // 监听登录状态
 auth.onAuthStateChanged(function(user) {
@@ -1520,26 +1625,41 @@ auth.onAuthStateChanged(function(user) {
   if (user) {
     currentUser = user;
     closeLoginModal();
-    loginBtn.style.display = 'none';
-    userInfo.style.display = '';
-    userName.textContent = user.displayName || user.email || '用户';
-    cloudStatus.textContent = '☁️ 加载中…';
 
-    // 登录后始终尝试从云端加载
-    loadFromCloud();
+    // 判断是否为邮箱注册用户，且未验证邮箱
+    // Google 登录的用户 emailVerified 自动为 true，不用拦截
+    if (!user.emailVerified) {
+      // 检查是否有 password 提供商（即邮箱注册用户）
+      var hasPwd = false;
+      user.providerData.forEach(function(p) {
+        if (p.providerId === 'password') hasPwd = true;
+      });
+      if (hasPwd) {
+        // 邮箱注册但未验证 → 显示验证提示弹窗
+        loginBtn.style.display = 'none';
+        showVerifyModal(user);
+        return;
+      }
+    }
+
+    afterLogin(user);
   } else {
     currentUser = null;
     loginBtn.style.display = '';
     userInfo.style.display = 'none';
     cloudStatus.textContent = '💻 本地模式';
 
-    // 未登录：只用 localStorage
-    if (!loadFromLocal()) {
-      const s = makeSession();
-      sessions = [s]; currentId = s.id;
-      saveData();
+    // 只在登出（非首次加载）时重新加载本地数据
+    // 首次加载时启动代码已渲染过本地数据，无需重复
+    if (initialAuthChecked) {
+      if (!loadFromLocal()) {
+        const s = makeSession();
+        sessions = [s]; currentId = s.id;
+        saveData();
+      }
+      renderAll();
     }
-    renderAll();
+    initialAuthChecked = true;
   }
 });
 
