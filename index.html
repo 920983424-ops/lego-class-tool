@@ -9,7 +9,30 @@
 <script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.14.0/firebase-app-check-compat.js"></script>
+
+<script>
+// ======== Firebase 配置 ========
+const firebaseConfig = {
+  apiKey: "AIzaSyC40tRWAo3FiBbVo2ZpsCpvhLJhAMEEv6E",
+  authDomain: "lego-class-tool.firebaseapp.com",
+  projectId: "lego-class-tool",
+  storageBucket: "lego-class-tool.firebasestorage.app",
+  messagingSenderId: "389591072182",
+  appId: "1:389591072182:web:dcde0e9905121fad5cd517",
+  measurementId: "G-E5SGYG1276"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+db.settings({ merge: true });
+
+let currentUser = null;
+let cloudLoaded = false;
+let cloudSavePending = false;
+let cloudTimer = null;
+let initialAuthChecked = false;
+
+</script>
 
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -309,31 +332,6 @@
 </div>
 
 <script>
-// ======== Firebase 配置 ========
-const firebaseConfig = {
-  apiKey: "AIzaSyC40tRWAo3FiBbVo2ZpsCpvhLJhAMEEv6E",
-  authDomain: "lego-class-tool.firebaseapp.com",
-  projectId: "lego-class-tool",
-  storageBucket: "lego-class-tool.firebasestorage.app",
-  messagingSenderId: "389591072182",
-  appId: "1:389591072182:web:dcde0e9905121fad5cd517",
-  measurementId: "G-E5SGYG1276"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-db.settings({ merge: true });
-
-let currentUser = null;
-let cloudLoaded = false;
-let cloudSavePending = false;
-let cloudTimer = null;
-let initialAuthChecked = false;
-
-// ======== App Check（防机器人）=======
-const appCheck = firebase.appCheck();
-appCheck.activate('6Lfd6hQtAAAAAKwMo5R-iBWsWN6bpFnZy2-Rz92R', true);
-
 // ======== 检查项配置 ========
 const CHECK_ITEMS = [
   {title:'🤖 搭建', items:['结构稳定','搭建速度快','创意改装','按图搭建']},
